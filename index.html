@@ -1,0 +1,1540 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Escape Hunter</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b1220'/%3E%3Ccircle cx='25' cy='32' r='10' fill='%23ffb13a'/%3E%3Crect x='40' y='22' width='16' height='20' rx='4' fill='%232fbf71'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #0a0f18;
+    --panel: #121c2b;
+    --panel-soft: #16202f;
+    --panel-lift: #1d2a3d;
+    --edge: #26344c;
+    --edge-strong: #344766;
+    --text: #eaf0fb;
+    --muted: #8fa3c4;
+    --accent: #5ad1ff;
+    --win: #57e39b;
+    --lose: #ff7b8a;
+    --amber: #ffb13a;
+    --violet: #a76fff;
+    --green: #66fa9f;
+    --shadow: 0 18px 40px rgba(0, 0, 0, .35);
+    --radius: 20px;
+    --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body { height: 100%; }
+
+  body {
+    margin: 0;
+    min-height: 100svh;
+    font-family: var(--font);
+    color: var(--text);
+    background:
+      radial-gradient(1200px 700px at 12% -12%, #16233a 0%, rgba(22, 35, 58, 0) 60%),
+      radial-gradient(900px 640px at 98% 8%, #221733 0%, rgba(34, 23, 51, 0) 55%),
+      linear-gradient(160deg, #0a101b 0%, #090e16 48%, #0c0a16 100%);
+    background-attachment: fixed;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .app {
+    width: min(1100px, 100%);
+    min-height: 100svh;
+    margin: 0 auto;
+    padding: clamp(14px, 2.2vw, 28px) clamp(14px, 2.4vw, 30px);
+    display: flex;
+    flex-direction: column;
+    gap: clamp(12px, 1.8vh, 18px);
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+
+  .brand {
+    flex: 1 1 260px;
+    min-width: 200px;
+  }
+
+  h1 {
+    margin: 0;
+    font-size: clamp(24px, 3.2vw, 32px);
+    font-weight: 800;
+    letter-spacing: .012em;
+    line-height: 1.1;
+  }
+
+  .subtitle {
+    margin: 6px 0 0;
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .turn {
+    min-width: 92px;
+    padding: 7px 16px 5px;
+    border: 1px solid var(--edge);
+    border-radius: 14px;
+    background: linear-gradient(180deg, #1a2537, #121b29);
+    text-align: center;
+  }
+
+  .turn .label {
+    display: block;
+    font-size: 10px;
+    letter-spacing: .18em;
+    color: var(--muted);
+  }
+
+  .turn .value {
+    display: block;
+    font-size: 28px;
+    font-weight: 700;
+    line-height: 1.2;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .select { position: relative; }
+
+  select, button {
+    font: inherit;
+    font-size: 15px;
+    color: var(--text);
+    background: var(--panel-soft);
+    border: 1px solid var(--edge);
+    border-radius: 12px;
+    padding: 12px 18px;
+    transition: background .15s ease, border-color .15s ease, transform .06s ease;
+  }
+
+  select {
+    appearance: none;
+    padding-right: 40px;
+    cursor: pointer;
+  }
+
+  select:hover, button:hover {
+    background: var(--panel-lift);
+    border-color: var(--edge-strong);
+  }
+
+  select:focus-visible, button:focus-visible, canvas:focus-visible {
+    outline: 2px solid rgba(90, 209, 255, .75);
+    outline-offset: 2px;
+  }
+
+  button { cursor: pointer; }
+  button:active { transform: translateY(1px); }
+
+  .chev {
+    position: absolute;
+    top: 50%;
+    right: 16px;
+    width: 0;
+    height: 0;
+    margin-top: -2px;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 6px solid var(--muted);
+    font-size: 0;
+    pointer-events: none;
+  }
+
+  .board-wrap {
+    flex: 1 1 auto;
+    min-height: 300px;
+    display: grid;
+    place-items: center;
+  }
+
+  .touchpad {
+    display: none;
+    grid-template-columns: repeat(3, 60px);
+    grid-template-rows: repeat(3, 60px);
+    gap: 8px;
+    justify-content: center;
+    margin: 0 auto;
+  }
+
+  .touchpad button {
+    display: grid;
+    place-items: center;
+    padding: 0;
+    font-size: 16px;
+    color: var(--muted);
+    background: var(--panel-soft);
+    border: 1px solid var(--edge);
+    border-radius: 16px;
+    touch-action: manipulation;
+  }
+
+  .touchpad button:active {
+    background: var(--panel-lift);
+    color: var(--text);
+  }
+
+  .touchpad .up { grid-area: 1 / 2; }
+  .touchpad .left { grid-area: 2 / 1; }
+  .touchpad .down { grid-area: 3 / 2; }
+  .touchpad .right { grid-area: 2 / 3; }
+
+  .board-frame {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 13 / 7;
+    max-height: 100%;
+    border: 1px solid var(--edge);
+    border-radius: var(--radius);
+    background: linear-gradient(180deg, #0c1119, #0a0f17);
+    box-shadow: var(--shadow), inset 0 1px 0 rgba(255, 255, 255, .03);
+    overflow: hidden;
+  }
+
+  canvas {
+    position: absolute;
+    left: 10px;
+    top: 10px;
+    width: calc(100% - 20px);
+    height: calc(100% - 20px);
+    display: block;
+    touch-action: none;
+    border-radius: 12px;
+    cursor: default;
+  }
+
+  footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px 18px;
+    flex-wrap: wrap;
+    color: var(--muted);
+    font-size: 13.5px;
+  }
+
+  #status {
+    margin: 0;
+    flex: 1 1 320px;
+    min-width: 0;
+  }
+
+  .legend {
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    white-space: nowrap;
+    font-size: 12.5px;
+  }
+
+  .legend span.item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .swatch {
+    display: inline-grid;
+    place-items: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    font-size: 10px;
+    font-weight: 800;
+    color: #0b1019;
+  }
+
+  .swatch.hunter { background: var(--amber); }
+  .swatch.fugitive { background: var(--violet); }
+  .swatch.exit { background: #1a5c40; color: var(--green); box-shadow: inset 0 0 0 1px rgba(102, 250, 159, .8); }
+
+  .overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    display: grid;
+    place-items: center;
+    padding: 20px;
+    background: rgba(3, 6, 11, .72);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity .18s ease, visibility .18s ease;
+  }
+
+  .overlay.open {
+    opacity: 1;
+    visibility: visible;
+  }
+
+  .card {
+    width: min(440px, 100%);
+    padding: 34px 32px 30px;
+    border: 1px solid var(--edge-strong);
+    border-radius: 24px;
+    background: linear-gradient(180deg, #182234, #131c2a);
+    box-shadow: 0 30px 70px rgba(0, 0, 0, .55), inset 0 1px 0 rgba(255, 255, 255, .04);
+    text-align: center;
+    transform: translateY(10px) scale(.97);
+    transition: transform .24s cubic-bezier(.2, .9, .3, 1.05);
+  }
+
+  .overlay.open .card { transform: none; }
+
+  .card h2 {
+    margin: 0 0 10px;
+    font-size: clamp(32px, 6vw, 40px);
+    letter-spacing: .02em;
+    color: var(--win);
+  }
+
+  .card.lose h2 { color: var(--lose); }
+
+  .card p {
+    margin: 0 0 24px;
+    color: var(--muted);
+    font-size: 15px;
+    line-height: 1.55;
+  }
+
+  button.primary {
+    background: linear-gradient(180deg, #2a7fd4, #1f66b3);
+    border-color: #4a9ae8;
+    font-weight: 600;
+    padding: 13px 26px;
+  }
+
+  button.primary:hover {
+    background: linear-gradient(180deg, #338ce4, #2472c4);
+    border-color: #63b0f5;
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  @media (max-width: 760px) {
+    .controls {
+      width: 100%;
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: 8px;
+    }
+    .turn { min-width: 84px; padding-left: 10px; padding-right: 10px; }
+    .select { min-width: 0; }
+    .select select { width: 100%; padding-left: 14px; padding-right: 34px; }
+    .board-wrap { flex: 0 0 auto; min-height: 0; }
+    .touchpad { display: grid; }
+    footer { font-size: 12.5px; }
+    .legend { gap: 10px; }
+  }
+
+  @media (max-width: 420px) {
+    .touchpad { grid-template-columns: repeat(3, 56px); grid-template-rows: repeat(3, 56px); }
+    h1 { font-size: 24px; }
+  }
+
+  @media (max-height: 560px) {
+    .app { min-height: 0; }
+    .board-wrap { min-height: 260px; height: 52vh; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: .001ms !important;
+      transition-duration: .001ms !important;
+    }
+  }
+</style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div class="brand">
+        <h1>ESCAPE HUNTER</h1>
+        <p class="subtitle">A turn-based pursuit on a grid</p>
+      </div>
+      <div class="controls">
+        <div class="turn" title="Turn counter">
+          <span class="label">TURN</span>
+          <span class="value" id="turn">0</span>
+        </div>
+        <div class="select">
+          <label class="sr-only" for="difficulty">Fugitive difficulty</label>
+          <select id="difficulty" title="Fugitive difficulty">
+            <option value="0">Easy</option>
+            <option value="1" selected>Normal</option>
+            <option value="2">Hard</option>
+            <option value="3">Expert</option>
+          </select>
+          <span class="chev" aria-hidden="true"></span>
+        </div>
+        <button id="restart" type="button" title="New map (R)">Restart</button>
+      </div>
+    </header>
+
+    <main class="board-wrap">
+      <div class="board-frame">
+        <canvas id="board" role="img" aria-label="Game board. Move the hunter with the arrow keys or WASD."></canvas>
+      </div>
+    </main>
+
+    <div class="touchpad" aria-label="Movement controls">
+      <button class="up" type="button" data-move="up" aria-label="Move up">&#9650;</button>
+      <button class="left" type="button" data-move="left" aria-label="Move left">&#9664;</button>
+      <button class="down" type="button" data-move="down" aria-label="Move down">&#9660;</button>
+      <button class="right" type="button" data-move="right" aria-label="Move right">&#9654;</button>
+    </div>
+
+    <footer>
+      <p id="status" role="status" aria-live="polite">Hunt the fugitive before it slips through the exit.</p>
+      <p class="legend" aria-label="Legend">
+        <span class="item"><span class="swatch hunter">H</span>Hunter</span>
+        <span class="item"><span class="swatch fugitive">F</span>Fugitive</span>
+        <span class="item"><span class="swatch exit">E</span>Exit</span>
+      </p>
+    </footer>
+  </div>
+
+  <div class="overlay" id="overlay" aria-hidden="true">
+    <div class="card" id="result-card" role="dialog" aria-modal="true" aria-labelledby="result-title" aria-describedby="result-message">
+      <h2 id="result-title">CAUGHT</h2>
+      <p id="result-message">You pinned the fugitive.</p>
+      <button id="again" class="primary" type="button">Play Again</button>
+    </div>
+  </div>
+
+<script>
+(() => {
+  'use strict';
+
+  /* ------------------------------------------------------------------ *
+   *  Core rules, map generation and AI.
+   *  This block is plain JavaScript with no DOM access so it can also be
+   *  exercised from Node (see tests/web_smoke_test.js).
+   * ------------------------------------------------------------------ */
+
+  const COLS = 13;
+  const ROWS = 7;
+  const TILE = { WALL: 0, FLOOR: 1, EXIT: 2 };
+  const DIRS = [[0, -1], [1, 0], [0, 1], [-1, 0]]; // up, right, down, left
+  const AI = { EASY: 0, NORMAL: 1, HARD: 2, EXPERT: 3 };
+  const DIFFICULTY = [
+    { name: 'Easy', hint: 'Walks in random directions.' },
+    { name: 'Normal', hint: 'Runs straight for the nearest exit.' },
+    { name: 'Hard', hint: 'Keeps clear of the hunter.' },
+    { name: 'Expert', hint: 'Reads your next three moves.' }
+  ];
+
+  const TAU = Math.PI * 2;
+  const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const same = (a, b) => a.x === b.x && a.y === b.y;
+  const manhattan = (a, b) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+  const chebyshev = (a, b) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
+  const idOf = (grid, cell) => cell.y * grid.w + cell.x;
+
+  function makeRng(seed) {
+    let state = seed >>> 0;
+    return function random() {
+      state = (state + 0x6D2B79F5) | 0;
+      let t = Math.imul(state ^ (state >>> 15), 1 | state);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function randInt(rng, min, max) {
+    return min + Math.floor(rng() * (max - min + 1));
+  }
+
+  class Grid {
+    constructor(w = COLS, h = ROWS) {
+      this.w = w;
+      this.h = h;
+      this.tiles = [];
+      this.exits = [];
+      this.reset();
+    }
+
+    reset() {
+      this.tiles = Array.from({ length: this.h }, () => new Array(this.w).fill(TILE.FLOOR));
+      this.exits = [];
+      for (let x = 0; x < this.w; x++) {
+        this.tiles[0][x] = TILE.WALL;
+        this.tiles[this.h - 1][x] = TILE.WALL;
+      }
+      for (let y = 0; y < this.h; y++) {
+        this.tiles[y][0] = TILE.WALL;
+        this.tiles[y][this.w - 1] = TILE.WALL;
+      }
+    }
+
+    inBounds(x, y) {
+      return x >= 0 && y >= 0 && x < this.w && y < this.h;
+    }
+
+    isInterior(x, y) {
+      return x > 0 && y > 0 && x < this.w - 1 && y < this.h - 1;
+    }
+
+    tile(x, y) {
+      return this.inBounds(x, y) ? this.tiles[y][x] : TILE.WALL;
+    }
+
+    setTile(x, y, tile) {
+      if (!this.inBounds(x, y)) return;
+      this.tiles[y][x] = tile;
+      if (tile === TILE.EXIT) {
+        if (!this.exits.some((cell) => cell.x === x && cell.y === y)) {
+          this.exits.push({ x, y });
+        }
+      } else {
+        this.exits = this.exits.filter((cell) => !(cell.x === x && cell.y === y));
+      }
+    }
+
+    isWall(x, y) { return this.tile(x, y) === TILE.WALL; }
+    isWalkable(x, y) { return this.inBounds(x, y) && this.tiles[y][x] !== TILE.WALL; }
+    isExit(x, y) { return this.tile(x, y) === TILE.EXIT; }
+
+    walkableCells() {
+      const cells = [];
+      for (let y = 0; y < this.h; y++) {
+        for (let x = 0; x < this.w; x++) {
+          if (this.tiles[y][x] !== TILE.WALL) cells.push({ x, y });
+        }
+      }
+      return cells;
+    }
+
+    interiorCells() {
+      const cells = [];
+      for (let y = 1; y < this.h - 1; y++) {
+        for (let x = 1; x < this.w - 1; x++) cells.push({ x, y });
+      }
+      return cells;
+    }
+
+    neighbors(x, y) {
+      const cells = [];
+      for (const [dx, dy] of DIRS) {
+        if (this.isWalkable(x + dx, y + dy)) cells.push({ x: x + dx, y: y + dy });
+      }
+      return cells;
+    }
+
+    loadLayout(rows) {
+      if (!rows || rows.length < 5) return null;
+      const width = rows[0].length;
+      if (width < 5 || rows.some((row) => row.length !== width)) return null;
+      this.w = width;
+      this.h = rows.length;
+      this.reset();
+      const spawns = { hunter: null, fugitive: null };
+      for (let y = 0; y < this.h; y++) {
+        for (let x = 0; x < this.w; x++) {
+          const glyph = rows[y][x];
+          if (glyph === '#') this.tiles[y][x] = TILE.WALL;
+          else if (glyph === 'E') this.setTile(x, y, TILE.EXIT);
+          else if (glyph === 'H') spawns.hunter = { x, y };
+          else if (glyph === 'F') spawns.fugitive = { x, y };
+        }
+      }
+      return spawns;
+    }
+  }
+
+  class Pathfinding {
+    /** A* route from start (exclusive) to goal (inclusive); [] if unreachable. */
+    static findPath(grid, start, goal, blocked = []) {
+      if (same(start, goal)) return [];
+      const blockedSet = new Set();
+      for (const cell of blocked) blockedSet.add(idOf(grid, cell));
+      const goalId = idOf(grid, goal);
+      if (!grid.isWalkable(goal.x, goal.y) || blockedSet.has(goalId)) return [];
+
+      const startId = idOf(grid, start);
+      const open = [startId];
+      const inOpen = new Set(open);
+      const closed = new Set();
+      const cameFrom = new Map();
+      const cost = new Map([[startId, 0]]);
+      const estimate = new Map([[startId, manhattan(start, goal)]]);
+
+      while (open.length > 0) {
+        let bestIndex = 0;
+        for (let i = 1; i < open.length; i++) {
+          if (estimate.get(open[i]) < estimate.get(open[bestIndex])) bestIndex = i;
+        }
+        const current = open.splice(bestIndex, 1)[0];
+        if (closed.has(current)) continue;
+        closed.add(current);
+        if (current === goalId) return Pathfinding._reconstruct(cameFrom, current, grid);
+
+        const point = { x: current % grid.w, y: Math.floor(current / grid.w) };
+        for (const next of grid.neighbors(point.x, point.y)) {
+          const nextId = idOf(grid, next);
+          if (blockedSet.has(nextId) || closed.has(nextId)) continue;
+          const nextCost = cost.get(current) + 1;
+          if (nextCost < (cost.get(nextId) ?? Infinity)) {
+            cost.set(nextId, nextCost);
+            cameFrom.set(nextId, current);
+            estimate.set(nextId, nextCost + manhattan(next, goal));
+            if (!inOpen.has(nextId)) {
+              open.push(nextId);
+              inOpen.add(nextId);
+            }
+          }
+        }
+      }
+      return [];
+    }
+
+    /** BFS flood fill; returns Map<cellId, steps> from the closest origin. */
+    static distanceField(grid, origins, blocked = []) {
+      const blockedSet = new Set();
+      for (const cell of blocked) blockedSet.add(idOf(grid, cell));
+
+      const distances = new Map();
+      const frontier = [];
+      for (const origin of origins) {
+        const originId = idOf(grid, origin);
+        if (grid.isWalkable(origin.x, origin.y) && !blockedSet.has(originId) && !distances.has(originId)) {
+          distances.set(originId, 0);
+          frontier.push(originId);
+        }
+      }
+
+      let head = 0;
+      while (head < frontier.length) {
+        const current = frontier[head++];
+        const point = { x: current % grid.w, y: Math.floor(current / grid.w) };
+        const distance = distances.get(current);
+        for (const next of grid.neighbors(point.x, point.y)) {
+          const nextId = idOf(grid, next);
+          if (blockedSet.has(nextId) || distances.has(nextId)) continue;
+          distances.set(nextId, distance + 1);
+          frontier.push(nextId);
+        }
+      }
+      return distances;
+    }
+
+    static nextStep(grid, from, goal, blocked = []) {
+      const path = Pathfinding.findPath(grid, from, goal, blocked);
+      return path.length > 0 ? path[0] : from;
+    }
+
+    static isReachable(grid, from, goal, blocked = []) {
+      return same(from, goal) || Pathfinding.findPath(grid, from, goal, blocked).length > 0;
+    }
+
+    static _reconstruct(cameFrom, currentId, grid) {
+      const path = [];
+      while (cameFrom.has(currentId)) {
+        path.push({ x: currentId % grid.w, y: Math.floor(currentId / grid.w) });
+        currentId = cameFrom.get(currentId);
+      }
+      path.reverse();
+      return path;
+    }
+  }
+
+  class MapGenerator {
+    static get MAX_ATTEMPTS() { return 60; }
+    static get MIN_OPEN_CELLS() { return 26; }
+    static get MIN_HUNTER_EXIT_DISTANCE() { return 4; }
+    static get MIN_HUNTER_FUGITIVE_DISTANCE() { return 5; }
+    static get MIN_FUGITIVE_EXIT_DISTANCE() { return 5; }
+
+    static get FALLBACK_LAYOUT() {
+      return [
+        '#############',
+        '#H.........E#',
+        '#...........#',
+        '#....##.....#',
+        '#...........#',
+        '#.....F.....#',
+        '#############'
+      ];
+    }
+
+    static generate(grid, rng) {
+      for (let attempt = 0; attempt < MapGenerator.MAX_ATTEMPTS; attempt++) {
+        MapGenerator._carve(grid, rng);
+        if (!MapGenerator._isPlayable(grid)) continue;
+        const spawns = MapGenerator._placeActors(grid, rng);
+        if (spawns) return spawns;
+      }
+      return MapGenerator._fallback(grid);
+    }
+
+    static _carve(grid, rng) {
+      grid.reset();
+      const interior = grid.interiorCells();
+
+      const walkers = randInt(rng, 3, 4);
+      for (let w = 0; w < walkers; w++) {
+        let cell = MapGenerator._pick(interior, rng);
+        const steps = randInt(rng, 4, 7);
+        for (let s = 0; s < steps; s++) {
+          if (grid.isInterior(cell.x, cell.y)) grid.setTile(cell.x, cell.y, TILE.WALL);
+          const [dx, dy] = DIRS[randInt(rng, 0, 3)];
+          cell = { x: cell.x + dx, y: cell.y + dy };
+        }
+      }
+
+      for (let p = 0; p < 6; p++) {
+        if (rng() >= 0.07) continue;
+        const pillar = MapGenerator._pick(interior, rng);
+        if (grid.isInterior(pillar.x, pillar.y)) grid.setTile(pillar.x, pillar.y, TILE.WALL);
+      }
+    }
+
+    static _isPlayable(grid) {
+      const open = grid.walkableCells();
+      if (open.length < MapGenerator.MIN_OPEN_CELLS) return false;
+
+      const seen = new Set([idOf(grid, open[0])]);
+      const frontier = [open[0]];
+      while (frontier.length > 0) {
+        const cell = frontier.pop();
+        for (const next of grid.neighbors(cell.x, cell.y)) {
+          const nextId = idOf(grid, next);
+          if (seen.has(nextId)) continue;
+          seen.add(nextId);
+          frontier.push(next);
+        }
+      }
+      return seen.size === open.length;
+    }
+
+    static _placeActors(grid, rng) {
+      const open = grid.walkableCells();
+      if (open.length < MapGenerator.MIN_OPEN_CELLS) return null;
+
+      const hunter = MapGenerator._pick(open, rng);
+
+      const exitOptions = open.filter((cell) =>
+        !same(cell, hunter) && manhattan(cell, hunter) >= MapGenerator.MIN_HUNTER_EXIT_DISTANCE
+      );
+      if (exitOptions.length === 0) return null;
+      const exitCell = MapGenerator._pick(exitOptions, rng);
+      grid.setTile(exitCell.x, exitCell.y, TILE.EXIT);
+
+      // Relax the spacing pass by pass so a cramped map still gets a spawn.
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const hunterGap = Math.max(3, MapGenerator.MIN_HUNTER_FUGITIVE_DISTANCE - attempt * 2);
+        const exitGap = Math.max(2, MapGenerator.MIN_FUGITIVE_EXIT_DISTANCE - attempt * 2);
+        const hunterExitDistance = manhattan(hunter, exitCell);
+
+        const candidates = open.filter((cell) => {
+          if (same(cell, hunter) || same(cell, exitCell)) return false;
+          if (manhattan(cell, hunter) < hunterGap) return false;
+          if (manhattan(cell, exitCell) < exitGap) return false;
+          // The strict pass starts the hunter on the exit side of the fugitive,
+          // so cutting it off is a plan instead of a hopeless race.
+          if (attempt === 0 && hunterExitDistance >= manhattan(cell, exitCell)) return false;
+          if (grid.neighbors(cell.x, cell.y).length < 2) return false;
+          return true;
+        });
+        if (candidates.length > 0) {
+          return { hunter, fugitive: MapGenerator._pick(candidates, rng) };
+        }
+      }
+
+      const fallbackCell = open.find((cell) => !same(cell, hunter) && !same(cell, exitCell));
+      return fallbackCell ? { hunter, fugitive: fallbackCell } : null;
+    }
+
+    static _fallback(grid) {
+      const spawns = grid.loadLayout(MapGenerator.FALLBACK_LAYOUT);
+      if (!spawns || !spawns.hunter || !spawns.fugitive) {
+        return { hunter: { x: 1, y: 1 }, fugitive: { x: 6, y: 5 } };
+      }
+      return spawns;
+    }
+
+    static _pick(cells, rng) {
+      return cells[Math.floor(rng() * cells.length)];
+    }
+  }
+
+  class FugitiveAI {
+    constructor(difficulty = AI.NORMAL) {
+      this.difficulty = difficulty;
+      this.recent = [];
+      this.random = Math.random;
+    }
+
+    reset() {
+      this.recent = [];
+    }
+
+    chooseMove(grid, hunter, fugitive, turn = 0) {
+      const options = this._legalMoves(grid, hunter, fugitive);
+      if (options.length === 0) return fugitive;
+
+      const exitField = Pathfinding.distanceField(grid, grid.exits, [hunter]);
+      const urgency = clamp(turn / 20, 0, 1);
+
+      let choice;
+      switch (this.difficulty) {
+        case AI.EASY:
+          choice = this._randomMove(options);
+          break;
+        case AI.HARD:
+          choice = this._cautiousMove(grid, options, exitField, hunter, urgency);
+          break;
+        case AI.EXPERT:
+          choice = this._expertMove(grid, options, exitField, hunter, fugitive, urgency);
+          break;
+        default:
+          choice = this._greedyMove(grid, options, exitField);
+      }
+
+      this._remember(fugitive);
+      return choice;
+    }
+
+    _legalMoves(grid, hunter, fugitive) {
+      return grid.neighbors(fugitive.x, fugitive.y).filter((cell) => !same(cell, hunter));
+    }
+
+    _remember(cell) {
+      this.recent.push(cell);
+      if (this.recent.length > 4) this.recent.shift();
+    }
+
+    _wasRecent(cell) {
+      return this.recent.some((past) => same(past, cell));
+    }
+
+    _randomMove(options) {
+      return options[Math.floor(this.random() * options.length)];
+    }
+
+    _greedyMove(grid, options, exitField) {
+      let best = [];
+      let bestScore = Infinity;
+      for (const cell of options) {
+        const distance = exitField.get(idOf(grid, cell)) ?? Infinity;
+        const score = distance + (this._wasRecent(cell) ? 1.5 : 0);
+        if (score < bestScore - 1e-9) {
+          bestScore = score;
+          best = [cell];
+        } else if (Math.abs(score - bestScore) < 1e-9) {
+          best.push(cell);
+        }
+      }
+      if (best.length === 0) return options[0];
+      return best[Math.floor(this.random() * best.length)];
+    }
+
+    _cautiousMove(grid, options, exitField, hunter, urgency) {
+      const threatWeight = lerp(3, 0, urgency);
+      let best = options[0];
+      let bestScore = Infinity;
+      for (const cell of options) {
+        const distance = exitField.get(idOf(grid, cell)) ?? Infinity;
+        let score = distance + this._threat(cell, hunter) * threatWeight;
+        if (this._wasRecent(cell)) score += 2 * (1 - urgency) + 1;
+        if (score < bestScore) {
+          bestScore = score;
+          best = cell;
+        }
+      }
+      return best;
+    }
+
+    _expertMove(grid, options, exitField, hunter, fugitive, urgency) {
+      let best = fugitive;
+      let bestScore = -Infinity;
+      for (const cell of options) {
+        const score = this._scoreExpertCell(grid, cell, exitField, hunter, urgency);
+        if (score > bestScore) {
+          bestScore = score;
+          best = cell;
+        }
+      }
+      return best;
+    }
+
+    _scoreExpertCell(grid, cell, exitField, hunter, urgency) {
+      if (grid.isExit(cell.x, cell.y)) return 10000;
+
+      // A real A* plan with the hunter's body treated as blocked.
+      const route = this._nearestExitPath(grid, cell, hunter);
+      if (route.length === 0) return -10000;
+      const distance = route.length;
+      const survival = this._simulatePursuit(grid, cell, hunter, exitField);
+      const openness = grid.neighbors(cell.x, cell.y).length;
+      const routes = this._routeOptions(grid, exitField, cell, hunter, distance);
+
+      let score = 0;
+      score += survival * lerp(45, 0, urgency);
+      score -= distance * lerp(7, 14, urgency);
+      score += openness * 6 * (1 - urgency);
+      score += routes * 9 * (1 - urgency);
+      score -= this._threat(cell, hunter) * 2 * (1 - urgency);
+      if (openness <= 1) score -= 30 * (1 - urgency);
+      if (chebyshev(cell, hunter) <= 1) score -= 150 * (1 - urgency);
+      if (this._wasRecent(cell)) score -= 24 * (1 - urgency) + 3;
+      return score;
+    }
+
+    _routeOptions(grid, exitField, cell, hunter, distance) {
+      let routes = 0;
+      for (const next of grid.neighbors(cell.x, cell.y)) {
+        if (same(next, hunter)) continue;
+        const nextDistance = exitField.get(idOf(grid, next));
+        if (nextDistance !== undefined && nextDistance <= distance + 1) routes += 1;
+      }
+      return routes;
+    }
+
+    _nearestExitPath(grid, from, hunter) {
+      let best = [];
+      for (const exitCell of grid.exits) {
+        const path = Pathfinding.findPath(grid, from, exitCell, [hunter]);
+        if (path.length === 0) continue;
+        if (best.length === 0 || path.length < best.length) best = path;
+      }
+      return best;
+    }
+
+    _simulatePursuit(grid, start, hunterStart, exitField) {
+      let fugitive = start;
+      let hunter = hunterStart;
+      for (let turn = 0; turn < 3; turn++) {
+        hunter = this._hunterStep(grid, hunter, fugitive);
+        if (same(hunter, fugitive)) return turn;
+        fugitive = this._fleeStep(grid, fugitive, hunter, exitField);
+        if (grid.isExit(fugitive.x, fugitive.y)) return 4;
+      }
+      return 3;
+    }
+
+    _hunterStep(grid, hunter, fugitive) {
+      const path = Pathfinding.findPath(grid, hunter, fugitive);
+      return path.length > 0 ? path[0] : hunter;
+    }
+
+    _fleeStep(grid, fugitive, hunter, exitField) {
+      const options = this._legalMoves(grid, hunter, fugitive);
+      if (options.length === 0) return fugitive;
+      let best = fugitive;
+      let bestScore = Infinity;
+      for (const cell of options) {
+        const distance = exitField.get(idOf(grid, cell)) ?? Infinity;
+        const score = distance + this._threat(cell, hunter) * 2;
+        if (score < bestScore) {
+          bestScore = score;
+          best = cell;
+        }
+      }
+      return best;
+    }
+
+    _threat(cell, hunter) {
+      switch (chebyshev(cell, hunter)) {
+        case 0: return 24;
+        case 1: return 12;
+        case 2: return 4;
+        default: return 0;
+      }
+    }
+  }
+
+  class Game {
+    constructor(rng = Math.random, difficulty = AI.NORMAL) {
+      this.rng = rng;
+      this.ai = new FugitiveAI(difficulty);
+      this.grid = null;
+      this.hunter = { x: 0, y: 0 };
+      this.fugitive = { x: 0, y: 0 };
+      this.turn = 0;
+      this.state = 'idle';
+      this.outcome = null;
+    }
+
+    newGame() {
+      this.grid = new Grid();
+      const spawns = MapGenerator.generate(this.grid, this.rng);
+      this.hunter = { ...spawns.hunter };
+      this.fugitive = { ...spawns.fugitive };
+      this.turn = 0;
+      this.state = 'player';
+      this.outcome = null;
+      this.ai.reset();
+      this.ai.random = this.rng;
+      return this;
+    }
+
+    move(direction) {
+      if (this.state !== 'player') return { kind: 'ignored' };
+      const target = { x: this.hunter.x + direction[0], y: this.hunter.y + direction[1] };
+      if (!this.grid.isWalkable(target.x, target.y)) return { kind: 'blocked', direction };
+
+      this.hunter = target;
+      this.turn += 1;
+      if (same(this.hunter, this.fugitive)) {
+        this.state = 'over';
+        this.outcome = 'hunter';
+        return { kind: 'capture' };
+      }
+      this.state = 'fugitive';
+      return { kind: 'moved' };
+    }
+
+    moveFugitive() {
+      if (this.state !== 'fugitive') return { kind: 'ignored' };
+      this.fugitive = this.ai.chooseMove(this.grid, this.hunter, this.fugitive, this.turn);
+
+      if (same(this.hunter, this.fugitive)) {
+        this.state = 'over';
+        this.outcome = 'hunter';
+        return { kind: 'capture' };
+      }
+      if (this.grid.isExit(this.fugitive.x, this.fugitive.y)) {
+        this.state = 'over';
+        this.outcome = 'fugitive';
+        return { kind: 'escape' };
+      }
+      this.state = 'player';
+      return { kind: 'moved' };
+    }
+  }
+
+  /* ------------------------------------------------------------------ *
+   *  Browser UI
+   * ------------------------------------------------------------------ */
+
+  const COLORS = {
+    bed: '#0e1724',
+    floorA: '#253449',
+    floorB: '#293a50',
+    wall: '#0b1220',
+    wallEdge: '#2d3f57',
+    exitFill: '#1a5c40',
+    exitGlow: '#66fa9f',
+    exitGlyph: '#8dffbc',
+    hunter: '#ffb13a',
+    fugitive: '#a76fff',
+    ink: '#0b1019',
+    hover: 'rgba(90, 209, 255, 0.55)'
+  };
+
+  const FONT = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+  const START_STATUS = 'Hunt the fugitive before it slips through the exit.';
+
+  function shade(hex, factor) {
+    const value = parseInt(hex.slice(1), 16);
+    const r = clamp(Math.round(((value >> 16) & 255) * factor), 0, 255);
+    const g = clamp(Math.round(((value >> 8) & 255) * factor), 0, 255);
+    const b = clamp(Math.round((value & 255) * factor), 0, 255);
+    return `rgb(${r}, ${g}, ${b})`;
+  }
+
+  function initUI() {
+    const els = {
+      canvas: document.getElementById('board'),
+      turn: document.getElementById('turn'),
+      difficulty: document.getElementById('difficulty'),
+      restart: document.getElementById('restart'),
+      status: document.getElementById('status'),
+      overlay: document.getElementById('overlay'),
+      card: document.getElementById('result-card'),
+      resultTitle: document.getElementById('result-title'),
+      resultMessage: document.getElementById('result-message'),
+      again: document.getElementById('again')
+    };
+    const ctx = els.canvas.getContext('2d');
+
+    const seeded = new URLSearchParams(window.location.search).get('seed');
+    const rng = seeded !== null && seeded !== '' ? makeRng(Number(seeded) >>> 0) : Math.random;
+
+    const view = {
+      w: 0,
+      h: 0,
+      cell: 0,
+      ox: 0,
+      oy: 0,
+      time: 0,
+      hunterVisual: { x: 0, y: 0 },
+      fugitiveVisual: { x: 0, y: 0 },
+      nudge: { x: 0, y: 0 },
+      hover: null
+    };
+
+    let game = null;
+    let token = 0;
+    let lastFrame = performance.now();
+    let dragStart = null;
+
+    function setStatus(text) {
+      els.status.textContent = text;
+    }
+
+    function popTurn() {
+      if (typeof els.turn.animate === 'function') {
+        els.turn.animate(
+          [{ transform: 'scale(1)' }, { transform: 'scale(1.16)' }, { transform: 'scale(1)' }],
+          { duration: 200, easing: 'ease-out' }
+        );
+      }
+    }
+
+    function hint() {
+      const distance = manhattan(game.hunter, game.fugitive);
+      if (distance <= 1) return 'It is right beside you - one clean step closes the hunt.';
+      if (distance <= 3) return `Close in. The fugitive is ${distance} tiles away.`;
+      return `Your move. The fugitive is ${distance} tiles away.`;
+    }
+
+    function newGame() {
+      token += 1;
+      game = new Game(rng, Number(els.difficulty.value));
+      game.newGame();
+      view.hunterVisual = { ...game.hunter };
+      view.fugitiveVisual = { ...game.fugitive };
+      view.nudge = { x: 0, y: 0 };
+      view.hover = null;
+      els.turn.textContent = '0';
+      els.overlay.classList.remove('open');
+      els.overlay.setAttribute('aria-hidden', 'true');
+      els.card.classList.remove('lose');
+      setStatus(START_STATUS);
+      resizeCanvas();
+    }
+
+    function restart() {
+      els.restart.blur();
+      els.again.blur();
+      newGame();
+    }
+
+    function scheduleFugitive() {
+      const myToken = ++token;
+      window.setTimeout(() => {
+        if (myToken !== token || !game || game.state !== 'fugitive') return;
+        game.moveFugitive();
+        if (game.state === 'over') {
+          finishGame();
+          return;
+        }
+        if (game.state === 'player') setStatus(hint());
+      }, 190);
+    }
+
+    function finishGame() {
+      const myToken = token;
+      setStatus(game.outcome === 'hunter' ? 'Case closed.' : 'The exit swallowed your target.');
+      window.setTimeout(() => {
+        if (myToken !== token) return;
+        showResult();
+      }, 260);
+    }
+
+    function showResult() {
+      const won = game.outcome === 'hunter';
+      els.card.classList.toggle('lose', !won);
+      els.resultTitle.textContent = won ? 'CAUGHT' : 'ESCAPED';
+      els.resultMessage.textContent = won
+        ? `You pinned the fugitive after ${game.turn} turn${game.turn === 1 ? '' : 's'}. Press R to hunt again.`
+        : `The fugitive reached the exit on turn ${game.turn}. Press R for a new map.`;
+      els.overlay.classList.add('open');
+      els.overlay.setAttribute('aria-hidden', 'false');
+      els.again.focus({ preventScroll: true });
+    }
+
+    function handleMove(direction) {
+      if (!game || game.state !== 'player' || !direction) return;
+      const result = game.move(direction);
+      if (result.kind === 'blocked') {
+        view.nudge = { x: direction[0] * 8, y: direction[1] * 8 };
+        return;
+      }
+      if (result.kind === 'ignored') return;
+
+      els.turn.textContent = String(game.turn);
+      popTurn();
+
+      if (game.state === 'over') {
+        finishGame();
+        return;
+      }
+      setStatus('The fugitive is on the move...');
+      scheduleFugitive();
+    }
+
+    function directionForKey(event) {
+      switch (event.key) {
+        case 'ArrowUp': case 'w': case 'W': return [0, -1];
+        case 'ArrowRight': case 'd': case 'D': return [1, 0];
+        case 'ArrowDown': case 's': case 'S': return [0, 1];
+        case 'ArrowLeft': case 'a': case 'A': return [-1, 0];
+        default: break;
+      }
+      switch (event.code) {
+        case 'KeyW': return [0, -1];
+        case 'KeyD': return [1, 0];
+        case 'KeyS': return [0, 1];
+        case 'KeyA': return [-1, 0];
+        default: return null;
+      }
+    }
+
+    window.addEventListener('keydown', (event) => {
+      if (event.defaultPrevented || event.repeat) return;
+      const active = document.activeElement;
+      if (active && (active.tagName === 'SELECT' || active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) {
+        return;
+      }
+      if (event.key === 'r' || event.key === 'R') {
+        event.preventDefault();
+        restart();
+        return;
+      }
+      const direction = directionForKey(event);
+      if (!direction) return;
+      event.preventDefault();
+      handleMove(direction);
+    });
+
+    els.restart.addEventListener('click', restart);
+    els.again.addEventListener('click', restart);
+
+    const padDirections = {
+      up: [0, -1], right: [1, 0], down: [0, 1], left: [-1, 0]
+    };
+    document.querySelectorAll('.touchpad button').forEach((button) => {
+      button.addEventListener('click', () => {
+        handleMove(padDirections[button.dataset.move]);
+        button.blur();
+      });
+    });
+
+    els.difficulty.addEventListener('change', () => {
+      game.ai.difficulty = Number(els.difficulty.value);
+      const info = DIFFICULTY[game.ai.difficulty];
+      setStatus(`Difficulty ${info.name} - ${info.hint}`);
+      els.difficulty.blur();
+    });
+
+    function cellFromEvent(event) {
+      const rect = els.canvas.getBoundingClientRect();
+      const px = event.clientX - rect.left;
+      const py = event.clientY - rect.top;
+      if (!view.cell) return null;
+      const x = Math.floor((px - view.ox) / view.cell);
+      const y = Math.floor((py - view.oy) / view.cell);
+      if (x < 0 || y < 0 || x >= COLS || y >= ROWS) return null;
+      return { x, y };
+    }
+
+    function tapCell(cell) {
+      if (!game || game.state !== 'player') return;
+      const dx = cell.x - game.hunter.x;
+      const dy = cell.y - game.hunter.y;
+      if (Math.abs(dx) + Math.abs(dy) !== 1) return;
+      if (!game.grid.isWalkable(cell.x, cell.y)) return;
+      handleMove([dx, dy]);
+    }
+
+    els.canvas.addEventListener('pointerdown', (event) => {
+      if (event.button !== undefined && event.button !== 0) return;
+      dragStart = { x: event.clientX, y: event.clientY };
+      if (els.canvas.setPointerCapture) {
+        try { els.canvas.setPointerCapture(event.pointerId); } catch (error) { /* ignore */ }
+      }
+    });
+
+    els.canvas.addEventListener('pointerup', (event) => {
+      if (!dragStart) return;
+      const dx = event.clientX - dragStart.x;
+      const dy = event.clientY - dragStart.y;
+      dragStart = null;
+
+      if (Math.hypot(dx, dy) >= 24) {
+        if (Math.abs(dx) >= Math.abs(dy)) handleMove([dx > 0 ? 1 : -1, 0]);
+        else handleMove([0, dy > 0 ? 1 : -1]);
+        return;
+      }
+      const cell = cellFromEvent(event);
+      if (cell) tapCell(cell);
+    });
+
+    els.canvas.addEventListener('pointercancel', () => { dragStart = null; });
+
+    els.canvas.addEventListener('pointermove', (event) => {
+      if (event.pointerType !== 'mouse') return;
+      view.hover = cellFromEvent(event);
+    });
+
+    els.canvas.addEventListener('pointerleave', () => { view.hover = null; });
+
+    function resizeCanvas() {
+      const rect = els.canvas.getBoundingClientRect();
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const width = Math.max(1, Math.round(rect.width));
+      const height = Math.max(1, Math.round(rect.height));
+      const pixelWidth = Math.round(width * dpr);
+      const pixelHeight = Math.round(height * dpr);
+      if (els.canvas.width !== pixelWidth || els.canvas.height !== pixelHeight) {
+        els.canvas.width = pixelWidth;
+        els.canvas.height = pixelHeight;
+      }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      view.w = width;
+      view.h = height;
+    }
+
+    if (typeof ResizeObserver === 'function') {
+      new ResizeObserver(resizeCanvas).observe(els.canvas);
+    }
+    window.addEventListener('resize', resizeCanvas);
+
+    function roundRectPath(x, y, w, h, radius) {
+      const r = Math.min(radius, w / 2, h / 2);
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
+    }
+
+    function fillRound(x, y, w, h, radius, color) {
+      roundRectPath(x, y, w, h, radius);
+      ctx.fillStyle = color;
+      ctx.fill();
+    }
+
+    function strokeRound(x, y, w, h, radius, color, lineWidth) {
+      roundRectPath(x, y, w, h, radius);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = lineWidth;
+      ctx.stroke();
+    }
+
+    function drawExit(cx, cy, cell) {
+      const pulse = 0.5 + 0.5 * Math.sin(view.time * 2.4);
+      const radius = cell * (0.29 + 0.02 * pulse);
+
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius * 1.6, 0, TAU);
+      ctx.fillStyle = `rgba(102, 250, 159, ${0.05 + 0.04 * pulse})`;
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, TAU);
+      ctx.fillStyle = COLORS.exitFill;
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, TAU);
+      ctx.strokeStyle = `rgba(102, 250, 159, ${0.55 + 0.25 * pulse})`;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.fillStyle = COLORS.exitGlyph;
+      ctx.font = `800 ${Math.round(radius * 1.2)}px ${FONT}`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('E', cx, cy + radius * 0.06);
+    }
+
+    function drawTile(cx, cy, cell, ox, oy) {
+      const x = ox + cx * cell;
+      const y = oy + cy * cell;
+      const tile = game.grid.tile(cx, cy);
+
+      if (tile === TILE.WALL) {
+        const margin = Math.max(2, cell * 0.045);
+        const size = cell - margin * 2;
+        fillRound(x + margin, y + margin, size, size, Math.min(8, cell * 0.12), COLORS.wall);
+        strokeRound(x + margin, y + margin, size, size, Math.min(8, cell * 0.12), COLORS.wallEdge, 1);
+        return;
+      }
+
+      const inset = Math.max(1, cell * 0.018);
+      fillRound(
+        x + inset,
+        y + inset,
+        cell - inset * 2,
+        cell - inset * 2,
+        Math.min(5, cell * 0.075),
+        (cx + cy) % 2 === 0 ? COLORS.floorA : COLORS.floorB
+      );
+
+      if (tile === TILE.EXIT) drawExit(x + cell / 2, y + cell / 2, cell);
+    }
+
+    function drawActor(position, color, letter, offsetX, offsetY, cell, ox, oy) {
+      const cx = ox + (position.x + 0.5) * cell + offsetX;
+      const cy = oy + (position.y + 0.5) * cell + offsetY;
+      const radius = cell * 0.32;
+
+      ctx.beginPath();
+      ctx.ellipse(cx, cy + radius * 0.14, radius * 1.02, radius * 0.98, 0, 0, TAU);
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, TAU);
+      ctx.fillStyle = color;
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius * 0.82, 0, TAU);
+      ctx.fillStyle = shade(color, 1.16);
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, TAU);
+      ctx.strokeStyle = shade(color, 0.7);
+      ctx.lineWidth = Math.max(1.5, cell * 0.028);
+      ctx.stroke();
+
+      ctx.fillStyle = COLORS.ink;
+      ctx.font = `800 ${Math.round(radius * 1.15)}px ${FONT}`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(letter, cx, cy + radius * 0.06);
+    }
+
+    function draw() {
+      if (!game || view.w <= 0 || view.h <= 0) return;
+      ctx.clearRect(0, 0, view.w, view.h);
+
+      const pad = 4;
+      const cell = Math.min((view.w - pad * 2) / COLS, (view.h - pad * 2) / ROWS);
+      if (!(cell > 2)) return;
+
+      const boardW = cell * COLS;
+      const boardH = cell * ROWS;
+      const ox = (view.w - boardW) / 2;
+      const oy = (view.h - boardH) / 2;
+      view.cell = cell;
+      view.ox = ox;
+      view.oy = oy;
+
+      fillRound(ox, oy, boardW, boardH, 10, COLORS.bed);
+
+      for (let y = 0; y < ROWS; y++) {
+        for (let x = 0; x < COLS; x++) drawTile(x, y, cell, ox, oy);
+      }
+
+      if (view.hover && game.state === 'player') {
+        const dx = view.hover.x - game.hunter.x;
+        const dy = view.hover.y - game.hunter.y;
+        if (Math.abs(dx) + Math.abs(dy) === 1 && game.grid.isWalkable(view.hover.x, view.hover.y)) {
+          const margin = Math.max(2, cell * 0.03);
+          strokeRound(
+            ox + view.hover.x * cell + margin,
+            oy + view.hover.y * cell + margin,
+            cell - margin * 2,
+            cell - margin * 2,
+            Math.min(8, cell * 0.12),
+            COLORS.hover,
+            2
+          );
+        }
+      }
+
+      drawActor(view.fugitiveVisual, COLORS.fugitive, 'F', 0, 0, cell, ox, oy);
+      drawActor(view.hunterVisual, COLORS.hunter, 'H', view.nudge.x, view.nudge.y, cell, ox, oy);
+    }
+
+    function update(delta) {
+      if (!game) return;
+      const weight = 1 - Math.exp(-18 * delta);
+      const targetHunter = game.hunter;
+      const targetFugitive = game.fugitive;
+
+      view.hunterVisual.x += (targetHunter.x - view.hunterVisual.x) * weight;
+      view.hunterVisual.y += (targetHunter.y - view.hunterVisual.y) * weight;
+      view.fugitiveVisual.x += (targetFugitive.x - view.fugitiveVisual.x) * weight;
+      view.fugitiveVisual.y += (targetFugitive.y - view.fugitiveVisual.y) * weight;
+
+      if (Math.abs(targetHunter.x - view.hunterVisual.x) < 0.004) view.hunterVisual.x = targetHunter.x;
+      if (Math.abs(targetHunter.y - view.hunterVisual.y) < 0.004) view.hunterVisual.y = targetHunter.y;
+      if (Math.abs(targetFugitive.x - view.fugitiveVisual.x) < 0.004) view.fugitiveVisual.x = targetFugitive.x;
+      if (Math.abs(targetFugitive.y - view.fugitiveVisual.y) < 0.004) view.fugitiveVisual.y = targetFugitive.y;
+
+      const decay = Math.exp(-10 * delta);
+      view.nudge.x *= decay;
+      view.nudge.y *= decay;
+      if (Math.hypot(view.nudge.x, view.nudge.y) < 0.5) view.nudge = { x: 0, y: 0 };
+    }
+
+    function loop(now) {
+      const delta = Math.min((now - lastFrame) / 1000, 0.05);
+      lastFrame = now;
+      view.time += delta;
+      update(delta);
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    newGame();
+    resizeCanvas();
+    requestAnimationFrame(loop);
+
+    // Debug/test hook: lets the smoke test drive the same moves the UI does.
+    window.__escapeHunter = {
+      get game() { return game; },
+      Grid,
+      Pathfinding,
+      Game,
+      input: handleMove,
+      restart
+    };
+  }
+
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+      Grid, Pathfinding, MapGenerator, FugitiveAI, Game,
+      AI, TILE, DIRS, same, manhattan, makeRng, randInt, COLS, ROWS
+    };
+  } else if (typeof document !== 'undefined') {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initUI, { once: true });
+    } else {
+      initUI();
+    }
+  }
+})();
+</script>
+</body>
+</html>

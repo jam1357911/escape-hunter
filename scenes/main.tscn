@@ -1,0 +1,215 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scripts/game_manager.gd" id="1_game"]
+[ext_resource type="Script" path="res://scripts/board_view.gd" id="2_board"]
+[ext_resource type="Script" path="res://scripts/hud.gd" id="3_hud"]
+
+[sub_resource type="Gradient" id="Gradient_bg"]
+offsets = PackedFloat32Array(0, 0.55, 1)
+colors = PackedColorArray(0.047, 0.067, 0.106, 1, 0.055, 0.086, 0.141, 1, 0.086, 0.063, 0.129, 1)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_bg"]
+gradient = SubResource("Gradient_bg")
+width = 1200
+height = 800
+fill_from = Vector2(0, 0)
+fill_to = Vector2(1, 1)
+
+[node name="Main" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_game")
+
+[node name="Background" type="TextureRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = SubResource("GradientTexture2D_bg")
+expand_mode = 1
+stretch_mode = 6
+
+[node name="HUD" type="Control" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("3_hud")
+
+[node name="Margin" type="MarginContainer" parent="HUD"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 30
+theme_override_constants/margin_top = 26
+theme_override_constants/margin_right = 30
+theme_override_constants/margin_bottom = 22
+
+[node name="Column" type="VBoxContainer" parent="HUD/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 18
+
+[node name="Header" type="HBoxContainer" parent="HUD/Margin/Column"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="Brand" type="VBoxContainer" parent="HUD/Margin/Column/Header"]
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_constants/separation = 2
+
+[node name="Title" type="Label" parent="HUD/Margin/Column/Header/Brand"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "ESCAPE HUNTER"
+
+[node name="Subtitle" type="Label" parent="HUD/Margin/Column/Header/Brand"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "A turn-based pursuit on a grid"
+
+[node name="Spacer" type="Control" parent="HUD/Margin/Column/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="TurnPanel" type="PanelContainer" parent="HUD/Margin/Column/Header"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(96, 0)
+layout_mode = 2
+size_flags_vertical = 4
+
+[node name="TurnBox" type="VBoxContainer" parent="HUD/Margin/Column/Header/TurnPanel"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 0
+
+[node name="TurnCaption" type="Label" parent="HUD/Margin/Column/Header/TurnPanel/TurnBox"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "TURN"
+horizontal_alignment = 1
+
+[node name="TurnValue" type="Label" parent="HUD/Margin/Column/Header/TurnPanel/TurnBox"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "0"
+horizontal_alignment = 1
+
+[node name="DifficultyPicker" type="OptionButton" parent="HUD/Margin/Column/Header"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(160, 46)
+layout_mode = 2
+size_flags_vertical = 4
+
+[node name="RestartButton" type="Button" parent="HUD/Margin/Column/Header"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(110, 46)
+layout_mode = 2
+size_flags_vertical = 4
+text = "Restart"
+
+[node name="BoardFrame" type="PanelContainer" parent="HUD/Margin/Column"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 380)
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="Board" type="Control" parent="HUD/Margin/Column/BoardFrame"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(620, 340)
+layout_mode = 2
+mouse_filter = 2
+script = ExtResource("2_board")
+
+[node name="Footer" type="HBoxContainer" parent="HUD/Margin/Column"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="StatusLabel" type="Label" parent="HUD/Margin/Column/Footer"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+text = "Hunt the fugitive before it slips through the exit."
+
+[node name="Legend" type="Label" parent="HUD/Margin/Column/Footer"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 4
+text = "H   Hunter        F   Fugitive        E   Exit"
+horizontal_alignment = 2
+
+[node name="Overlay" type="Control" parent="HUD"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+
+[node name="Dim" type="ColorRect" parent="HUD/Overlay"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+color = Color(0.016, 0.024, 0.039, 0.74)
+
+[node name="Center" type="CenterContainer" parent="HUD/Overlay"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="ResultCard" type="PanelContainer" parent="HUD/Overlay/Center"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(440, 0)
+layout_mode = 2
+
+[node name="ResultBox" type="VBoxContainer" parent="HUD/Overlay/Center/ResultCard"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 12
+
+[node name="ResultTitle" type="Label" parent="HUD/Overlay/Center/ResultCard/ResultBox"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "CAUGHT"
+horizontal_alignment = 1
+
+[node name="ResultMessage" type="Label" parent="HUD/Overlay/Center/ResultCard/ResultBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(360, 0)
+layout_mode = 2
+text = "You pinned the fugitive."
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="PlayAgainButton" type="Button" parent="HUD/Overlay/Center/ResultCard/ResultBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(190, 48)
+layout_mode = 2
+size_flags_horizontal = 4
+text = "Play Again"
