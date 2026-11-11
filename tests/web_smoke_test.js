@@ -52,13 +52,13 @@ section('Layout parsing');
 {
   const grid = new Grid();
   const spawns = grid.loadLayout(MapGenerator.FALLBACK_LAYOUT);
-  check(grid.w === 13 && grid.h === 7, 'layout sets the grid size');
+  check(grid.w === 15 && grid.h === 15, 'layout sets the grid size');
   check(spawns && same(spawns.hunter, { x: 1, y: 1 }), 'hunter spawn is parsed');
-  check(spawns && same(spawns.fugitive, { x: 6, y: 5 }), 'fugitive spawn is parsed');
-  check(grid.exits.length === 1 && same(grid.exits[0], { x: 11, y: 1 }), 'exit is parsed');
+  check(spawns && same(spawns.fugitive, { x: 8, y: 11 }), 'fugitive spawn is parsed');
+  check(grid.exits.length === 1 && same(grid.exits[0], { x: 13, y: 1 }), 'exit is parsed');
   check(grid.isWall(0, 0), 'the border is solid');
-  check(grid.isWalkable(6, 5), 'floor is walkable');
-  check(grid.neighbors(6, 5).length === 3, 'neighbour lookup works');
+  check(grid.isWalkable(8, 11), 'floor is walkable');
+  check(grid.neighbors(1, 1).length === 2, 'neighbour lookup works');
 }
 
 // ------------------------------------------------------------ pathfinding ---
@@ -98,7 +98,7 @@ section('Map generation');
   let exitGapTotal = 0;
 
   for (let seed = 0; seed < 200; seed++) {
-    const grid = new Grid(13, 7);
+    const grid = new Grid(15, 15);
     const spawns = MapGenerator.generate(grid, makeRng(seed * 7919 + 13));
     const open = grid.walkableCells().length;
     minOpen = Math.min(minOpen, open);
@@ -127,8 +127,8 @@ section('Map generation');
   }
 
   check(broken === 0, '200 random maps spawn both actors and a reachable exit');
-  check(minOpen >= 26, 'generated maps keep enough open space');
-  check(exitGapTotal / 200 >= 5, 'the fugitive starts well away from the exit');
+  check(minOpen >= 85, 'generated maps keep enough open space');
+  check(exitGapTotal / 200 >= 7, 'the fugitive starts well away from the exit');
 }
 
 // -------------------------------------------------------------------- AI ---
@@ -209,6 +209,20 @@ section('Game state machine');
   const escapeResult = escapeGame.moveFugitive();
   check(escapeResult.kind === 'escape' && escapeGame.outcome === 'fugitive', 'reaching the exit wins for the fugitive');
 
+  // The fugitive runs out of steam every fifth turn, which is what stops a
+  // perfect evader from circling a loop forever.
+  const restGame = new Game(makeRng(21), AI.NORMAL);
+  restGame.newGame();
+  restGame.turn = 5;
+  restGame.state = 'fugitive';
+  const restResult = restGame.moveFugitive();
+  check(restResult.kind === 'rest' && restGame.state === 'player', 'the fugitive rests on the fifth turn');
+
+  restGame.turn = 4;
+  restGame.state = 'fugitive';
+  const activeResult = restGame.moveFugitive();
+  check(activeResult.kind !== 'rest', 'the fugitive moves on other turns');
+
   // A fugitive stepping onto the hunter is captured.
   const captureGame = new Game(makeRng(9), AI.NORMAL);
   captureGame.newGame();
@@ -251,7 +265,8 @@ section('Simulated battles');
         } else {
           const before = { ...game.fugitive };
           const options = game.ai._legalMoves(game.grid, game.hunter, game.fugitive);
-          game.moveFugitive();
+          const result = game.moveFugitive();
+          if (result.kind === 'rest') continue;
           if (game.state !== 'over' && options.length > 0 && same(before, game.fugitive)) illegal += 1;
         }
       }

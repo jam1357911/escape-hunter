@@ -2,30 +2,41 @@ class_name MapGenerator
 extends RefCounted
 ## Builds random, always-solvable levels.
 ##
-## Walls are carved with a few short random walks, then the layout is
-## validated (connected and open enough) before the hunter, the fugitive and
-## the exit are placed far enough apart to make the chase interesting.
+## The board is filled with roughly 40% walls, then every disconnected pocket
+## is joined to the main region by carving a 4-neighbour tunnel. That keeps the
+## maze dense while guaranteeing the hunter, the fugitive and the exit can
+## always reach each other.
+##
+## Spawns are placed so the hunter starts on the exit side of the fugitive:
+## cutting the fugitive off is a real plan instead of a hopeless race.
 
 const MAX_ATTEMPTS := 60
-const MIN_OPEN_CELLS := 26
-const MIN_HUNTER_EXIT_DISTANCE := 4
-const MIN_HUNTER_FUGITIVE_DISTANCE := 5
-const MIN_FUGITIVE_EXIT_DISTANCE := 5
+const WALL_DENSITY := 0.4
+const MIN_OPEN_CELLS := 85
+const MIN_HUNTER_EXIT_DISTANCE := 6
+const MIN_HUNTER_FUGITIVE_DISTANCE := 8
+const MIN_FUGITIVE_EXIT_DISTANCE := 8
 
-## Deterministic map used if random generation somehow fails every attempt.
 const FALLBACK_LAYOUT := [
-	"#############",
-	"#H.........E#",
-	"#...........#",
-	"#....##.....#",
-	"#...........#",
-	"#.....F.....#",
-	"#############",
+	"###############",
+	"#H...........E#",
+	"#.............#",
+	"#....##.......#",
+	"#.............#",
+	"#.......##....#",
+	"#.............#",
+	"#.....#.......#",
+	"#.............#",
+	"#..##.........#",
+	"#.............#",
+	"#.......F.....#",
+	"#.............#",
+	"#.............#",
+	"###############",
 ]
 
 
 static func generate(grid: GridManager, rng: RandomNumberGenerator) -> Dictionary:
-	## Fills [param grid] and returns `{"hunter": Vector2i, "fugitive": Vector2i}`.
 	for _attempt in MAX_ATTEMPTS:
 		_carve(grid, rng)
 		if not _is_playable(grid):
@@ -38,24 +49,68 @@ static func generate(grid: GridManager, rng: RandomNumberGenerator) -> Dictionar
 
 static func _carve(grid: GridManager, rng: RandomNumberGenerator) -> void:
 	grid.reset()
-	var interior := grid.interior_cells()
+	for cell in grid.interior_cells():
+		if rng.randf() < WALL_DENSITY:
+			grid.set_tile(cell, GridManager.Tile.WALL)
+	_connect(grid)
 
-	# Short random walks read as natural wall clusters instead of noise.
-	for _walker in rng.randi_range(3, 4):
-		var cell: Vector2i = interior[rng.randi_range(0, interior.size() - 1)]
-		for _step in rng.randi_range(4, 7):
-			if grid.is_interior(cell):
-				grid.set_tile(cell, GridManager.Tile.WALL)
-			var direction: Vector2i = GridManager.CARDINAL_DIRECTIONS[rng.randi_range(0, 3)]
-			cell += direction
 
-	# A few loose pillars break up the long open corridors.
-	for _pillar in 6:
-		if rng.randf() >= 0.07:
-			continue
-		var pillar: Vector2i = interior[rng.randi_range(0, interior.size() - 1)]
-		if grid.is_interior(pillar):
-			grid.set_tile(pillar, GridManager.Tile.WALL)
+static func _connect(grid: GridManager) -> void:
+	## Tunnels 4-connected paths from the main region to the next orphaned tile.
+	for _pass in 400:
+		var open_cells := grid.walkable_cells()
+		if open_cells.is_empty():
+			return
+
+		var main := {}
+		main[open_cells[0]] = true
+		var flood: Array[Vector2i] = [open_cells[0]]
+		while not flood.is_empty():
+			var cell: Vector2i = flood.pop_back()
+			for neighbour in grid.walkable_neighbors(cell):
+				if main.has(neighbour):
+					continue
+				main[neighbour] = true
+				flood.append(neighbour)
+
+		var orphan := Vector2i(-1, -1)
+		for cell in open_cells:
+			if not main.has(cell):
+				orphan = cell
+				break
+		if orphan == Vector2i(-1, -1):
+			return
+
+		var previous := {}
+		var queue: Array[Vector2i] = []
+		for cell in main:
+			var start: Vector2i = cell
+			previous[start] = Vector2i(-1, -1)
+			queue.append(start)
+
+		var target := Vector2i(-1, -1)
+		var head := 0
+		while head < queue.size() and target == Vector2i(-1, -1):
+			var current: Vector2i = queue[head]
+			head += 1
+			for direction in GridManager.CARDINAL_DIRECTIONS:
+				var next: Vector2i = current + direction
+				if not grid.is_interior(next) or previous.has(next):
+					continue
+				previous[next] = current
+				queue.append(next)
+				if next == orphan:
+					target = next
+					break
+
+		if target == Vector2i(-1, -1):
+			return
+
+		var cursor := target
+		while cursor != Vector2i(-1, -1):
+			if grid.is_wall(cursor):
+				grid.set_tile(cursor, GridManager.Tile.FLOOR)
+			cursor = previous[cursor]
 
 
 static func _is_playable(grid: GridManager) -> bool:
@@ -63,11 +118,9 @@ static func _is_playable(grid: GridManager) -> bool:
 	if open_cells.size() < MIN_OPEN_CELLS:
 		return false
 
-	# Every floor tile must belong to the same region, otherwise a spawn or the
-	# exit could end up sealed inside a pocket.
 	var seen := {}
-	var frontier: Array[Vector2i] = [open_cells[0]]
 	seen[open_cells[0]] = true
+	var frontier: Array[Vector2i] = [open_cells[0]]
 	while not frontier.is_empty():
 		var cell: Vector2i = frontier.pop_back()
 		for neighbour in grid.walkable_neighbors(cell):
@@ -85,7 +138,6 @@ static func _place_actors(grid: GridManager, rng: RandomNumberGenerator) -> Dict
 
 	var hunter: Vector2i = _pick(open_cells, rng)
 
-	# The exit must be a real trek away from the hunter's starting tile.
 	var exit_options: Array[Vector2i] = []
 	for cell in open_cells:
 		if cell != hunter and GridManager.manhattan(cell, hunter) >= MIN_HUNTER_EXIT_DISTANCE:
@@ -95,13 +147,11 @@ static func _place_actors(grid: GridManager, rng: RandomNumberGenerator) -> Dict
 	var exit_cell: Vector2i = _pick(exit_options, rng)
 	grid.set_tile(exit_cell, GridManager.Tile.EXIT)
 
-	# Progressively relax the spawn spacing so generation never gives up on a
-	# cramped but otherwise valid map. The strict pass also requires the hunter
-	# to start closer to the exit than the fugitive, which makes cutting the
-	# fugitive off a real plan instead of a hopeless race.
+	# Relax the spacing so a cramped map still gets a spawn. The strict pass
+	# also requires the hunter to be nearer the exit than the fugitive.
 	for attempt in 3:
-		var hunter_gap := maxi(3, MIN_HUNTER_FUGITIVE_DISTANCE - attempt * 2)
-		var exit_gap := maxi(2, MIN_FUGITIVE_EXIT_DISTANCE - attempt * 2)
+		var hunter_gap := maxi(4, MIN_HUNTER_FUGITIVE_DISTANCE - attempt * 2)
+		var exit_gap := maxi(3, MIN_FUGITIVE_EXIT_DISTANCE - attempt * 2)
 		var candidates: Array[Vector2i] = []
 		for cell in open_cells:
 			if cell == hunter or cell == exit_cell:
@@ -127,7 +177,7 @@ static func _place_actors(grid: GridManager, rng: RandomNumberGenerator) -> Dict
 static func _fallback(grid: GridManager) -> Dictionary:
 	var spawns := grid.load_layout(FALLBACK_LAYOUT)
 	if spawns.is_empty() or spawns["hunter"] == Vector2i(-1, -1) or spawns["fugitive"] == Vector2i(-1, -1):
-		return {"hunter": Vector2i(1, 1), "fugitive": Vector2i(6, 5)}
+		return {"hunter": Vector2i(1, 1), "fugitive": Vector2i(8, 11)}
 	return spawns
 
 

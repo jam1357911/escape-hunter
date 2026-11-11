@@ -12,13 +12,13 @@ const CARDINAL_DIRECTIONS := [
 	Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT,
 ]
 
-var size := Vector2i(13, 7)
+var size := Vector2i(15, 15)
 var exits: Array[Vector2i] = []
 
 var _tiles: Array = []
 
 
-func _init(grid_size := Vector2i(13, 7)) -> void:
+func _init(grid_size := Vector2i(15, 15)) -> void:
 	size = grid_size
 	reset()
 

@@ -28,6 +28,9 @@ const PREDICTION_TURNS := 3
 const UNREACHABLE := 1 << 20
 const RECENT_MEMORY := 4
 
+## Turns until each tier stops dodging and commits to the exit.
+const URGENCY_TURNS := [8, 14, 20, 30]
+
 var difficulty := Difficulty.NORMAL
 
 ## Tiles the fugitive recently left, used to break chase loops.
@@ -55,7 +58,7 @@ func choose_move(
 	# The hunter's tile is treated as blocked: stepping onto it is capture.
 	var blocked: Array[Vector2i] = [hunter]
 	var exit_field := pathfinder.distances_from(grid, grid.exits, blocked)
-	var urgency := clampf(float(turn) / 20.0, 0.0, 1.0)
+	var urgency := clampf(float(turn) / float(URGENCY_TURNS[difficulty]), 0.0, 1.0)
 
 	var choice: Vector2i
 	match difficulty:

@@ -39,12 +39,12 @@ func _test_layout() -> void:
 	print("Layout parsing")
 	var grid := GridManager.new()
 	var spawns := grid.load_layout(MapGenerator.FALLBACK_LAYOUT)
-	_check(grid.size == Vector2i(13, 7), "layout sets the grid size")
+	_check(grid.size == Vector2i(15, 15), "layout sets the grid size")
 	_check(spawns["hunter"] == Vector2i(1, 1), "hunter spawn is parsed")
-	_check(spawns["fugitive"] == Vector2i(6, 5), "fugitive spawn is parsed")
-	_check(grid.exits.size() == 1 and grid.exits[0] == Vector2i(11, 1), "exit is parsed")
+	_check(spawns["fugitive"] == Vector2i(8, 11), "fugitive spawn is parsed")
+	_check(grid.exits.size() == 1 and grid.exits[0] == Vector2i(13, 1), "exit is parsed")
 	_check(not grid.is_walkable(Vector2i(0, 0)), "the border is solid")
-	_check(grid.is_walkable(Vector2i(6, 5)), "floor is walkable")
+	_check(grid.is_walkable(Vector2i(8, 11)), "floor is walkable")
 
 
 func _test_pathfinding() -> void:
@@ -80,7 +80,7 @@ func _test_generation() -> void:
 	var broken := 0
 	for index in 150:
 		rng.seed = index * 7919 + 13
-		var grid := GridManager.new(Vector2i(13, 7))
+		var grid := GridManager.new(Vector2i(15, 15))
 		var spawns := MapGenerator.generate(grid, rng)
 		var hunter: Vector2i = spawns.get("hunter", Vector2i(-1, -1))
 		var fugitive: Vector2i = spawns.get("fugitive", Vector2i(-1, -1))

@@ -198,9 +198,9 @@
 
   .board-frame {
     position: relative;
-    width: 100%;
-    aspect-ratio: 13 / 7;
-    max-height: 100%;
+    width: min(100%, calc(100svh - 195px));
+    aspect-ratio: 1 / 1;
+    max-width: 100%;
     border: 1px solid var(--edge);
     border-radius: var(--radius);
     background: linear-gradient(180deg, #0c1119, #0a0f17);
@@ -351,6 +351,7 @@
     .select { min-width: 0; }
     .select select { width: 100%; padding-left: 14px; padding-right: 34px; }
     .board-wrap { flex: 0 0 auto; min-height: 0; }
+    .board-frame { width: min(100%, 400px); }
     .touchpad { display: grid; }
     footer { font-size: 12.5px; }
     .legend { gap: 10px; }
@@ -441,8 +442,8 @@
    *  exercised from Node (see tests/web_smoke_test.js).
    * ------------------------------------------------------------------ */
 
-  const COLS = 13;
-  const ROWS = 7;
+  const COLS = 15;
+  const ROWS = 15;
   const TILE = { WALL: 0, FLOOR: 1, EXIT: 2 };
   const DIRS = [[0, -1], [1, 0], [0, 1], [-1, 0]]; // up, right, down, left
   const AI = { EASY: 0, NORMAL: 1, HARD: 2, EXPERT: 3 };
@@ -452,6 +453,10 @@
     { name: 'Hard', hint: 'Keeps clear of the hunter.' },
     { name: 'Expert', hint: 'Reads your next three moves.' }
   ];
+
+  // Turns until the fugitive gives up on dodging and commits to the exit.
+  // Sharper tiers hold their nerve for longer.
+  const URGENCY_TURNS = [8, 14, 20, 30];
 
   const TAU = Math.PI * 2;
   const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
@@ -670,20 +675,29 @@
 
   class MapGenerator {
     static get MAX_ATTEMPTS() { return 60; }
-    static get MIN_OPEN_CELLS() { return 26; }
-    static get MIN_HUNTER_EXIT_DISTANCE() { return 4; }
-    static get MIN_HUNTER_FUGITIVE_DISTANCE() { return 5; }
-    static get MIN_FUGITIVE_EXIT_DISTANCE() { return 5; }
+    static get WALL_DENSITY() { return 0.4; }
+    static get MIN_OPEN_CELLS() { return 85; }
+    static get MIN_HUNTER_EXIT_DISTANCE() { return 6; }
+    static get MIN_HUNTER_FUGITIVE_DISTANCE() { return 8; }
+    static get MIN_FUGITIVE_EXIT_DISTANCE() { return 8; }
 
     static get FALLBACK_LAYOUT() {
       return [
-        '#############',
-        '#H.........E#',
-        '#...........#',
-        '#....##.....#',
-        '#...........#',
-        '#.....F.....#',
-        '#############'
+        '###############',
+        '#H...........E#',
+        '#.............#',
+        '#....##.......#',
+        '#.............#',
+        '#.......##....#',
+        '#.............#',
+        '#.....#.......#',
+        '#.............#',
+        '#..##.........#',
+        '#.............#',
+        '#.......F.....#',
+        '#.............#',
+        '#.............#',
+        '###############'
       ];
     }
 
@@ -699,23 +713,71 @@
 
     static _carve(grid, rng) {
       grid.reset();
-      const interior = grid.interiorCells();
-
-      const walkers = randInt(rng, 3, 4);
-      for (let w = 0; w < walkers; w++) {
-        let cell = MapGenerator._pick(interior, rng);
-        const steps = randInt(rng, 4, 7);
-        for (let s = 0; s < steps; s++) {
-          if (grid.isInterior(cell.x, cell.y)) grid.setTile(cell.x, cell.y, TILE.WALL);
-          const [dx, dy] = DIRS[randInt(rng, 0, 3)];
-          cell = { x: cell.x + dx, y: cell.y + dy };
-        }
+      for (const cell of grid.interiorCells()) {
+        if (rng() < MapGenerator.WALL_DENSITY) grid.setTile(cell.x, cell.y, TILE.WALL);
       }
+      MapGenerator._connect(grid);
+    }
 
-      for (let p = 0; p < 6; p++) {
-        if (rng() >= 0.07) continue;
-        const pillar = MapGenerator._pick(interior, rng);
-        if (grid.isInterior(pillar.x, pillar.y)) grid.setTile(pillar.x, pillar.y, TILE.WALL);
+    /**
+     * Random 40% walls can seal off pockets. Open a tunnel from the main
+     * region to the next orphaned floor tile until every floor tile is
+     * reachable again. Tunnels are carved with 4-neighbour steps, the same
+     * movement rules the actors use.
+     */
+    static _connect(grid) {
+      for (let pass = 0; pass < 400; pass++) {
+        const open = grid.walkableCells();
+        if (open.length === 0) return;
+
+        const main = new Set([idOf(grid, open[0])]);
+        const flood = [open[0]];
+        while (flood.length > 0) {
+          const cell = flood.pop();
+          for (const next of grid.neighbors(cell.x, cell.y)) {
+            const nextId = idOf(grid, next);
+            if (main.has(nextId)) continue;
+            main.add(nextId);
+            flood.push(next);
+          }
+        }
+
+        const orphan = open.find((cell) => !main.has(idOf(grid, cell)));
+        if (!orphan) return;
+
+        const previous = new Map();
+        const queue = [];
+        for (const id of main) {
+          previous.set(id, -1);
+          queue.push(id);
+        }
+
+        let target = -1;
+        for (let head = 0; head < queue.length && target < 0; head++) {
+          const current = queue[head];
+          const point = { x: current % grid.w, y: Math.floor(current / grid.w) };
+          for (const [dx, dy] of DIRS) {
+            const nx = point.x + dx;
+            const ny = point.y + dy;
+            if (!grid.isInterior(nx, ny)) continue;
+            const nextId = ny * grid.w + nx;
+            if (previous.has(nextId)) continue;
+            previous.set(nextId, current);
+            queue.push(nextId);
+            if (nx === orphan.x && ny === orphan.y) {
+              target = nextId;
+              break;
+            }
+          }
+        }
+        if (target < 0) return;
+
+        let id = target;
+        while (id !== -1) {
+          const cell = { x: id % grid.w, y: Math.floor(id / grid.w) };
+          if (grid.isWall(cell.x, cell.y)) grid.setTile(cell.x, cell.y, TILE.FLOOR);
+          id = previous.get(id);
+        }
       }
     }
 
@@ -752,8 +814,8 @@
 
       // Relax the spacing pass by pass so a cramped map still gets a spawn.
       for (let attempt = 0; attempt < 3; attempt++) {
-        const hunterGap = Math.max(3, MapGenerator.MIN_HUNTER_FUGITIVE_DISTANCE - attempt * 2);
-        const exitGap = Math.max(2, MapGenerator.MIN_FUGITIVE_EXIT_DISTANCE - attempt * 2);
+        const hunterGap = Math.max(4, MapGenerator.MIN_HUNTER_FUGITIVE_DISTANCE - attempt * 2);
+        const exitGap = Math.max(3, MapGenerator.MIN_FUGITIVE_EXIT_DISTANCE - attempt * 2);
         const hunterExitDistance = manhattan(hunter, exitCell);
 
         const candidates = open.filter((cell) => {
@@ -778,7 +840,7 @@
     static _fallback(grid) {
       const spawns = grid.loadLayout(MapGenerator.FALLBACK_LAYOUT);
       if (!spawns || !spawns.hunter || !spawns.fugitive) {
-        return { hunter: { x: 1, y: 1 }, fugitive: { x: 6, y: 5 } };
+        return { hunter: { x: 1, y: 1 }, fugitive: { x: 8, y: 11 } };
       }
       return spawns;
     }
@@ -804,7 +866,7 @@
       if (options.length === 0) return fugitive;
 
       const exitField = Pathfinding.distanceField(grid, grid.exits, [hunter]);
-      const urgency = clamp(turn / 20, 0, 1);
+      const urgency = clamp(turn / (URGENCY_TURNS[this.difficulty] || 20), 0, 1);
 
       let choice;
       switch (this.difficulty) {
@@ -975,6 +1037,9 @@
   }
 
   class Game {
+    /** The fugitive runs out of steam this often (in hunter turns). */
+    static get REST_INTERVAL() { return 5; }
+
     constructor(rng = Math.random, difficulty = AI.NORMAL) {
       this.rng = rng;
       this.ai = new FugitiveAI(difficulty);
@@ -1017,6 +1082,14 @@
 
     moveFugitive() {
       if (this.state !== 'fugitive') return { kind: 'ignored' };
+
+      // Every few turns the fugitive has to catch its breath. Without this a
+      // perfect evader can circle a loop forever at equal speed.
+      if (this.turn > 0 && this.turn % Game.REST_INTERVAL === 0) {
+        this.state = 'player';
+        return { kind: 'rest' };
+      }
+
       this.fugitive = this.ai.chooseMove(this.grid, this.hunter, this.fugitive, this.turn);
 
       if (same(this.hunter, this.fugitive)) {
@@ -1092,7 +1165,8 @@
       hunterVisual: { x: 0, y: 0 },
       fugitiveVisual: { x: 0, y: 0 },
       nudge: { x: 0, y: 0 },
-      hover: null
+      hover: null,
+      restFlash: 0
     };
 
     let game = null;
@@ -1128,6 +1202,7 @@
       view.fugitiveVisual = { ...game.fugitive };
       view.nudge = { x: 0, y: 0 };
       view.hover = null;
+      view.restFlash = 0;
       els.turn.textContent = '0';
       els.overlay.classList.remove('open');
       els.overlay.setAttribute('aria-hidden', 'true');
@@ -1146,7 +1221,12 @@
       const myToken = ++token;
       window.setTimeout(() => {
         if (myToken !== token || !game || game.state !== 'fugitive') return;
-        game.moveFugitive();
+        const result = game.moveFugitive();
+        if (result.kind === 'rest') {
+          view.restFlash = 1;
+          setStatus('The fugitive is exhausted and loses a turn.');
+          return;
+        }
         if (game.state === 'over') {
           finishGame();
           return;
@@ -1474,6 +1554,21 @@
 
       drawActor(view.fugitiveVisual, COLORS.fugitive, 'F', 0, 0, cell, ox, oy);
       drawActor(view.hunterVisual, COLORS.hunter, 'H', view.nudge.x, view.nudge.y, cell, ox, oy);
+
+      if (view.restFlash > 0) {
+        const cx = ox + (view.fugitiveVisual.x + 0.5) * cell;
+        const cy = oy + (view.fugitiveVisual.y + 0.5) * cell - cell * 0.6;
+        ctx.save();
+        ctx.globalAlpha = Math.min(1, view.restFlash);
+        ctx.fillStyle = '#a9bcd8';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = `700 ${Math.round(cell * 0.34)}px ${FONT}`;
+        ctx.fillText('z', cx + cell * 0.26, cy + cell * 0.2);
+        ctx.font = `700 ${Math.round(cell * 0.24)}px ${FONT}`;
+        ctx.fillText('z', cx + cell * 0.46, cy - cell * 0.1);
+        ctx.restore();
+      }
     }
 
     function update(delta) {
@@ -1496,6 +1591,8 @@
       view.nudge.x *= decay;
       view.nudge.y *= decay;
       if (Math.hypot(view.nudge.x, view.nudge.y) < 0.5) view.nudge = { x: 0, y: 0 };
+
+      view.restFlash = Math.max(0, view.restFlash - delta * 1.1);
     }
 
     function loop(now) {

@@ -6,6 +6,10 @@ A complete turn-based pursuit game in two forms:
   any modern browser, offline, with no build step or dependencies.
 - **Godot 4 project** — the same rules, look and AI as a native project.
 
+The board is **15 × 15** with roughly **40% walls**, one hunter (the cop) and
+one fugitive. Random mazes always connect, and the fugitive gets tired, so
+chases end in a capture or a clean escape instead of an endless draw.
+
 ![Escape Hunter in the browser](docs/screenshot-web.png)
 
 ## Play in the browser
@@ -46,11 +50,17 @@ there is no tileset or sprite import step.
 1. The hunter moves one tile (walls block movement).
 2. If the hunter shares the fugitive's tile, the hunter wins immediately.
 3. The fugitive moves one tile.
-4. If the fugitive stands on an exit, the fugitive wins.
-5. Repeat.
+4. Every fifth hunter turn the fugitive is out of breath and misses its move.
+5. If the fugitive stands on an exit, the fugitive wins.
+6. Repeat.
 
 The turn counter increments on every hunter move. The fugitive cannot step
 onto the hunter's tile, and the AI plans around the hunter's position.
+
+Rule 4 is the anti-draw rule. At equal speed a perfect evader can circle a
+loop forever, so it now has to hand the hunter a free step every five turns.
+That makes a capture genuinely reachable without turning the chase into a
+walkover; in 100 simulated hunts every game finished.
 
 When the hunt ends the result card names the winner and offers a fresh map:
 
@@ -69,8 +79,8 @@ Two details keep the chase from becoming a dance:
 
 - Normal, Hard and Expert remember the last four tiles they left and avoid
   pacing between the same two cells.
-- Hard and Expert start to ignore the hunter after twenty turns and commit to
-  the exit, so a hunt always resolves instead of orbiting forever.
+- After a while the fugitive stops dodging and commits to the exit — after 8
+  turns on Easy, 14 on Normal, 20 on Hard and 30 on Expert.
 
 The Expert tier also treats every tile next to the hunter as almost forbidden
 while it still has room to dodge, which is what makes it double back and take
@@ -80,17 +90,17 @@ the long way around.
 
 Both builds use the same generator:
 
-1. Fill the room and keep a solid border.
-2. Carve walls with three or four short random walks plus the occasional
-   pillar — natural-looking clusters instead of noise.
-3. Reject the layout unless every floor tile is connected and at least 26
-   cells are open (up to 60 attempts).
-4. Place the hunter at random, then an exit at least 4 Manhattan steps away.
-5. Place the fugitive at least 5 steps from the hunter and 5 from the exit,
-   on a tile with two or more ways out. The strict pass also requires the
-   hunter to start closer to the exit than the fugitive, so cutting the
-   fugitive off is a real plan rather than a hopeless race. Spacing relaxes
-   if the map is cramped.
+1. Fill the board and keep a solid border.
+2. Scatter walls over 40% of the interior, then join every isolated pocket to
+   the main region by carving a 4-neighbour tunnel. The result is a dense maze
+   that is always solvable for the same movement rules the actors use.
+3. Reject the layout unless at least 85 cells are open and connected (up to
+   60 attempts).
+4. Place the hunter at random, then an exit at least 6 Manhattan steps away.
+5. Place the fugitive at least 8 steps from the hunter and 8 from the exit,
+   on a tile with two or more ways out. The strict pass also starts the hunter
+   nearer the exit than the fugitive, so cutting the fugitive off is a real
+   plan rather than a hopeless race. Spacing relaxes if the map is cramped.
 
 If random generation somehow failed every attempt, the deterministic MVP
 layout from the design (`FALLBACK_LAYOUT`) is used instead.
@@ -105,8 +115,7 @@ escape-hunter/
 ├── docs/
 │   ├── screenshot-web.png
 │   ├── screenshot-web-result.png
-│   ├── screenshot.png
-│   └── screenshot-result.png
+│   └── screenshot.png
 ├── scenes/
 │   └── main.tscn            # Godot layout only: header, board frame, footer, modal
 ├── scripts/

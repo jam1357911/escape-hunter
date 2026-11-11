@@ -14,8 +14,9 @@ extends Control
 enum State { IDLE, PLAYER_TURN, FUGITIVE_TURN, GAME_OVER }
 enum Outcome { NONE, HUNTER_WINS, FUGITIVE_WINS }
 
-const GRID_SIZE := Vector2i(13, 7)
+const GRID_SIZE := Vector2i(15, 15)
 const TURN_DELAY := 0.18 ## Seconds the fugitive "thinks" before it moves.
+const REST_INTERVAL := 5 ## The fugitive loses every fifth turn to exhaustion.
 
 @onready var board: BoardView = %Board
 @onready var hud: GameHUD = %HUD
@@ -50,8 +51,7 @@ func start_new_game() -> void:
 	grid = GridManager.new(GRID_SIZE)
 	var spawns := MapGenerator.generate(grid, rng)
 	hunter_cell = spawns.get("hunter", Vector2i(1, 1))
-	fugitive_cell = spawns.get("fugitive", Vector2i(GRID_SIZE.x - 2, GRID_SIZE.y - 2))
-
+	fugitive_cell = spawns.get("fugitive", Vector2i(8, 11))
 	player.cell = hunter_cell
 	fugitive_ai.reset()
 	turn_count = 0
@@ -89,6 +89,13 @@ func _run_fugitive_turn() -> void:
 	var token := _run_token
 	await get_tree().create_timer(TURN_DELAY).timeout
 	if token != _run_token or state != State.FUGITIVE_TURN:
+		return
+
+	# Every fifth turn the fugitive runs out of steam. Without this a perfect
+	# evader can circle a loop forever at equal speed.
+	if turn_count > 0 and turn_count % REST_INTERVAL == 0:
+		state = State.PLAYER_TURN
+		hud.set_status("The fugitive is exhausted and loses a turn.")
 		return
 
 	fugitive_cell = fugitive_ai.choose_move(grid, pathfinder, hunter_cell, fugitive_cell, turn_count)
