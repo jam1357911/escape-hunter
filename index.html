@@ -51,7 +51,7 @@
     padding: clamp(14px, 2.2vw, 28px) clamp(14px, 2.4vw, 30px);
     display: flex;
     flex-direction: column;
-    gap: clamp(12px, 1.8vh, 18px);
+    gap: clamp(10px, 1.5vh, 16px);
   }
 
   header {
@@ -136,7 +136,7 @@
     border-color: var(--edge-strong);
   }
 
-  select:focus-visible, button:focus-visible, canvas:focus-visible {
+  select:focus-visible, button:focus-visible, input:focus-visible, canvas:focus-visible {
     outline: 2px solid rgba(90, 209, 255, .75);
     outline-offset: 2px;
   }
@@ -156,6 +156,116 @@
     border-top: 6px solid var(--muted);
     font-size: 0;
     pointer-events: none;
+  }
+
+  /* ---- setup panel ---- */
+
+  .setup {
+    border: 1px solid var(--edge);
+    border-radius: 16px;
+    background: linear-gradient(180deg, rgba(22, 32, 47, .72), rgba(17, 26, 39, .6));
+  }
+
+  .setup > summary {
+    display: none;
+    list-style: none;
+    cursor: pointer;
+    align-items: baseline;
+    gap: 10px;
+    padding: 11px 14px;
+  }
+
+  .setup > summary::-webkit-details-marker { display: none; }
+
+  .setup > summary .setup-label {
+    font-size: 11px;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--accent);
+    font-weight: 700;
+  }
+
+  .setup > summary .setup-summary {
+    color: var(--muted);
+    font-size: 12.5px;
+  }
+
+  .setup[open] > summary { border-bottom: 1px solid rgba(38, 52, 76, .65); }
+
+  .setup-body {
+    display: flex;
+    align-items: flex-end;
+    gap: 14px;
+    flex-wrap: wrap;
+    padding: 10px 14px 11px;
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    min-width: 0;
+  }
+
+  .field > span {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    font-size: 10px;
+    letter-spacing: .15em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .select.compact select {
+    padding: 8px 30px 8px 12px;
+    font-size: 14px;
+    border-radius: 10px;
+    min-width: 72px;
+  }
+
+  .select.compact .chev { right: 12px; }
+
+  .walls-field {
+    flex: 1 1 160px;
+    max-width: 260px;
+    min-width: 140px;
+  }
+
+  .walls-field input[type="range"] {
+    width: 100%;
+    margin: 2px 0 3px;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+
+  .walls-field output {
+    color: var(--text);
+    font-weight: 600;
+    letter-spacing: .02em;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  #apply {
+    padding: 9px 16px;
+    font-size: 14px;
+    font-weight: 600;
+    border-color: #3b6f9e;
+    background: linear-gradient(180deg, #244a6e, #1c3b59);
+    white-space: nowrap;
+  }
+
+  #apply:hover {
+    background: linear-gradient(180deg, #2c5a86, #21466a);
+    border-color: #4d86ba;
+  }
+
+  .setup-hint {
+    margin: 0 0 5px auto;
+    font-size: 11.5px;
+    color: var(--muted);
+    white-space: nowrap;
   }
 
   .board-wrap {
@@ -198,7 +308,7 @@
 
   .board-frame {
     position: relative;
-    width: min(100%, calc(100svh - 195px));
+    width: min(100%, calc(100svh - 285px));
     aspect-ratio: 1 / 1;
     max-width: 100%;
     border: 1px solid var(--edge);
@@ -224,7 +334,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px 18px;
+    gap: 10px 18px;
     flex-wrap: wrap;
     color: var(--muted);
     font-size: 13.5px;
@@ -232,8 +342,21 @@
 
   #status {
     margin: 0;
-    flex: 1 1 320px;
+    flex: 1 1 300px;
     min-width: 0;
+  }
+
+  .tally {
+    margin: 0;
+    white-space: nowrap;
+    font-size: 12.5px;
+    font-variant-numeric: tabular-nums;
+    color: var(--muted);
+  }
+
+  .tally b {
+    color: var(--text);
+    font-weight: 600;
   }
 
   .legend {
@@ -287,7 +410,7 @@
   }
 
   .card {
-    width: min(440px, 100%);
+    width: min(460px, 100%);
     padding: 34px 32px 30px;
     border: 1px solid var(--edge-strong);
     border-radius: 24px;
@@ -350,21 +473,27 @@
     .turn { min-width: 84px; padding-left: 10px; padding-right: 10px; }
     .select { min-width: 0; }
     .select select { width: 100%; padding-left: 14px; padding-right: 34px; }
+    .setup { gap: 0; }
+    .setup > summary { display: flex; }
+    .setup-body { gap: 10px; padding: 10px 14px 12px; }
+    .field { flex: 1 1 90px; }
+    .walls-field { flex: 1 1 100%; max-width: none; }
+    #apply { flex: 1 1 100%; }
+    .setup-hint { display: none; }
     .board-wrap { flex: 0 0 auto; min-height: 0; }
-    .board-frame { width: min(100%, 400px); }
-    .touchpad { display: grid; }
+    .board-frame { width: min(100%, 360px); }
+    .touchpad { display: grid; grid-template-columns: repeat(3, 56px); grid-template-rows: repeat(3, 56px); }
     footer { font-size: 12.5px; }
     .legend { gap: 10px; }
   }
 
   @media (max-width: 420px) {
-    .touchpad { grid-template-columns: repeat(3, 56px); grid-template-rows: repeat(3, 56px); }
+    .touchpad { grid-template-columns: repeat(3, 52px); grid-template-rows: repeat(3, 52px); }
     h1 { font-size: 24px; }
   }
-
   @media (max-height: 560px) {
     .app { min-height: 0; }
-    .board-wrap { min-height: 260px; height: 52vh; }
+    .board-wrap { min-height: 240px; height: 46vh; }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -380,12 +509,12 @@
     <header>
       <div class="brand">
         <h1>ESCAPE HUNTER</h1>
-        <p class="subtitle">A turn-based pursuit on a grid</p>
+        <p class="subtitle">Turn-based pursuit on a grid</p>
       </div>
       <div class="controls">
-        <div class="turn" title="Turn counter">
-          <span class="label">TURN</span>
-          <span class="value" id="turn">0</span>
+        <div class="turn" title="Round counter">
+          <span class="label">ROUND</span>
+          <span class="value" id="turn">1</span>
         </div>
         <div class="select">
           <label class="sr-only" for="difficulty">Fugitive difficulty</label>
@@ -397,13 +526,56 @@
           </select>
           <span class="chev" aria-hidden="true"></span>
         </div>
-        <button id="restart" type="button" title="New map (R)">Restart</button>
+        <button id="restart" type="button" title="Restart with these settings (R)">Restart</button>
       </div>
     </header>
 
+    <details class="setup" id="setup" open>
+      <summary>
+        <span class="setup-label">Setup</span>
+        <span class="setup-summary" id="setup-summary">1 hunter &middot; 1 fugitive &middot; 40% walls</span>
+      </summary>
+      <div class="setup-body">
+        <div class="field">
+          <span>Hunters</span>
+          <div class="select compact">
+            <label class="sr-only" for="hunters">Number of hunters</label>
+            <select id="hunters" title="Number of hunters">
+              <option value="1">1</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+              <option value="4">4</option>
+              <option value="5">5</option>
+            </select>
+            <span class="chev" aria-hidden="true"></span>
+          </div>
+        </div>
+        <div class="field">
+          <span>Fugitives</span>
+          <div class="select compact">
+            <label class="sr-only" for="fugitives">Number of fugitives</label>
+            <select id="fugitives" title="Number of fugitives">
+              <option value="1">1</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+              <option value="4">4</option>
+              <option value="5">5</option>
+            </select>
+            <span class="chev" aria-hidden="true"></span>
+          </div>
+        </div>
+        <div class="field walls-field">
+          <span>Walls <output id="walls-value" for="walls">40%</output></span>
+          <input id="walls" type="range" min="20" max="60" step="5" value="40" title="Wall coverage">
+        </div>
+        <button id="apply" type="button" title="Start a hunt with these settings">New hunt</button>
+        <p class="setup-hint">Changes apply to the next hunt.</p>
+      </div>
+    </details>
+
     <main class="board-wrap">
       <div class="board-frame">
-        <canvas id="board" role="img" aria-label="Game board. Move the hunter with the arrow keys or WASD."></canvas>
+        <canvas id="board" role="img" aria-label="Game board. Move each hunter with the arrow keys or WASD."></canvas>
       </div>
     </main>
 
@@ -415,7 +587,8 @@
     </div>
 
     <footer>
-      <p id="status" role="status" aria-live="polite">Hunt the fugitive before it slips through the exit.</p>
+      <p id="status" role="status" aria-live="polite">Move each hunter once, then the fugitives run.</p>
+      <p class="tally" id="tally">Caught <b>0</b> / 1 &middot; Escaped <b>0</b></p>
       <p class="legend" aria-label="Legend">
         <span class="item"><span class="swatch hunter">H</span>Hunter</span>
         <span class="item"><span class="swatch fugitive">F</span>Fugitive</span>
@@ -427,7 +600,7 @@
   <div class="overlay" id="overlay" aria-hidden="true">
     <div class="card" id="result-card" role="dialog" aria-modal="true" aria-labelledby="result-title" aria-describedby="result-message">
       <h2 id="result-title">CAUGHT</h2>
-      <p id="result-message">You pinned the fugitive.</p>
+      <p id="result-message">You caught every fugitive.</p>
       <button id="again" class="primary" type="button">Play Again</button>
     </div>
   </div>
@@ -437,9 +610,8 @@
   'use strict';
 
   /* ------------------------------------------------------------------ *
-   *  Core rules, map generation and AI.
-   *  This block is plain JavaScript with no DOM access so it can also be
-   *  exercised from Node (see tests/web_smoke_test.js).
+   *  Rules, map generation and AI.
+   *  No DOM access in this block, so it can also run under Node.
    * ------------------------------------------------------------------ */
 
   const COLS = 15;
@@ -450,13 +622,13 @@
   const DIFFICULTY = [
     { name: 'Easy', hint: 'Walks in random directions.' },
     { name: 'Normal', hint: 'Runs straight for the nearest exit.' },
-    { name: 'Hard', hint: 'Keeps clear of the hunter.' },
-    { name: 'Expert', hint: 'Reads your next three moves.' }
+    { name: 'Hard', hint: 'Keeps clear of the hunters.' },
+    { name: 'Expert', hint: 'Reads the hunters three moves ahead.' }
   ];
 
-  // Turns until the fugitive gives up on dodging and commits to the exit.
-  // Sharper tiers hold their nerve for longer.
+  // Rounds until the fugitives stop dodging and commit to the exit.
   const URGENCY_TURNS = [8, 14, 20, 30];
+  const MAX_ACTORS = 5;
 
   const TAU = Math.PI * 2;
   const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
@@ -474,10 +646,6 @@
       t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
       return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
     };
-  }
-
-  function randInt(rng, min, max) {
-    return min + Math.floor(rng() * (max - min + 1));
   }
 
   class Grid {
@@ -674,59 +842,32 @@
   }
 
   class MapGenerator {
-    static get MAX_ATTEMPTS() { return 60; }
-    static get WALL_DENSITY() { return 0.4; }
-    static get MIN_OPEN_CELLS() { return 85; }
-    static get MIN_HUNTER_EXIT_DISTANCE() { return 6; }
-    static get MIN_HUNTER_FUGITIVE_DISTANCE() { return 8; }
-    static get MIN_FUGITIVE_EXIT_DISTANCE() { return 8; }
+    static get MAX_ATTEMPTS() { return 80; }
+    static get MIN_OPEN_CELLS() { return 40; }
+    static get MIN_GAP() { return 6; }
 
-    static get FALLBACK_LAYOUT() {
-      return [
-        '###############',
-        '#H...........E#',
-        '#.............#',
-        '#....##.......#',
-        '#.............#',
-        '#.......##....#',
-        '#.............#',
-        '#.....#.......#',
-        '#.............#',
-        '#..##.........#',
-        '#.............#',
-        '#.......F.....#',
-        '#.............#',
-        '#.............#',
-        '###############'
-      ];
-    }
-
-    static generate(grid, rng) {
+    static generate(grid, rng, settings) {
+      const density = clamp(settings.walls / 100, 0.2, 0.6);
       for (let attempt = 0; attempt < MapGenerator.MAX_ATTEMPTS; attempt++) {
-        MapGenerator._carve(grid, rng);
-        if (!MapGenerator._isPlayable(grid)) continue;
-        const spawns = MapGenerator._placeActors(grid, rng);
+        MapGenerator._carve(grid, rng, density);
+        if (!MapGenerator._isPlayable(grid, settings)) continue;
+        const spawns = MapGenerator._placeActors(grid, rng, settings);
         if (spawns) return spawns;
       }
-      return MapGenerator._fallback(grid);
+      return MapGenerator._fallback(grid, settings);
     }
 
-    static _carve(grid, rng) {
+    static _carve(grid, rng, density) {
       grid.reset();
       for (const cell of grid.interiorCells()) {
-        if (rng() < MapGenerator.WALL_DENSITY) grid.setTile(cell.x, cell.y, TILE.WALL);
+        if (rng() < density) grid.setTile(cell.x, cell.y, TILE.WALL);
       }
       MapGenerator._connect(grid);
     }
 
-    /**
-     * Random 40% walls can seal off pockets. Open a tunnel from the main
-     * region to the next orphaned floor tile until every floor tile is
-     * reachable again. Tunnels are carved with 4-neighbour steps, the same
-     * movement rules the actors use.
-     */
+    /** Join every disconnected pocket with a 4-neighbour tunnel. */
     static _connect(grid) {
-      for (let pass = 0; pass < 400; pass++) {
+      for (let pass = 0; pass < 500; pass++) {
         const open = grid.walkableCells();
         if (open.length === 0) return;
 
@@ -781,9 +922,10 @@
       }
     }
 
-    static _isPlayable(grid) {
+    static _isPlayable(grid, settings) {
       const open = grid.walkableCells();
-      if (open.length < MapGenerator.MIN_OPEN_CELLS) return false;
+      const actors = settings.hunters + settings.fugitives;
+      if (open.length < Math.max(MapGenerator.MIN_OPEN_CELLS, actors + 8)) return false;
 
       const seen = new Set([idOf(grid, open[0])]);
       const frontier = [open[0]];
@@ -799,54 +941,75 @@
       return seen.size === open.length;
     }
 
-    static _placeActors(grid, rng) {
+    static _placeActors(grid, rng, settings) {
       const open = grid.walkableCells();
-      if (open.length < MapGenerator.MIN_OPEN_CELLS) return null;
+      const total = settings.hunters + settings.fugitives;
+      if (open.length < total + 1) return null;
 
-      const hunter = MapGenerator._pick(open, rng);
-
-      const exitOptions = open.filter((cell) =>
-        !same(cell, hunter) && manhattan(cell, hunter) >= MapGenerator.MIN_HUNTER_EXIT_DISTANCE
-      );
-      if (exitOptions.length === 0) return null;
-      const exitCell = MapGenerator._pick(exitOptions, rng);
+      const exitCell = open[Math.floor(rng() * open.length)];
       grid.setTile(exitCell.x, exitCell.y, TILE.EXIT);
+      const pool = open.filter((cell) => !same(cell, exitCell));
 
-      // Relax the spacing pass by pass so a cramped map still gets a spawn.
-      for (let attempt = 0; attempt < 3; attempt++) {
-        const hunterGap = Math.max(4, MapGenerator.MIN_HUNTER_FUGITIVE_DISTANCE - attempt * 2);
-        const exitGap = Math.max(3, MapGenerator.MIN_FUGITIVE_EXIT_DISTANCE - attempt * 2);
-        const hunterExitDistance = manhattan(hunter, exitCell);
-
-        const candidates = open.filter((cell) => {
-          if (same(cell, hunter) || same(cell, exitCell)) return false;
-          if (manhattan(cell, hunter) < hunterGap) return false;
-          if (manhattan(cell, exitCell) < exitGap) return false;
-          // The strict pass starts the hunter on the exit side of the fugitive,
-          // so cutting it off is a plan instead of a hopeless race.
-          if (attempt === 0 && hunterExitDistance >= manhattan(cell, exitCell)) return false;
-          if (grid.neighbors(cell.x, cell.y).length < 2) return false;
-          return true;
-        });
-        if (candidates.length > 0) {
-          return { hunter, fugitive: MapGenerator._pick(candidates, rng) };
+      // Try to keep the fugitives away from the hunters and the exit; relax the
+      // gap if the chosen wall density leaves little room.
+      for (let gap = MapGenerator.MIN_GAP; gap >= 0; gap -= 2) {
+        for (let attempt = 0; attempt < 300; attempt++) {
+          const shuffled = MapGenerator._shuffled(pool, rng);
+          const cops = shuffled.slice(0, settings.hunters);
+          const fugitives = shuffled.slice(settings.hunters, total);
+          if (gap > 0 && !MapGenerator._spaced(fugitives, cops, exitCell, gap)) continue;
+          return { cops, fugitives };
         }
       }
 
-      const fallbackCell = open.find((cell) => !same(cell, hunter) && !same(cell, exitCell));
-      return fallbackCell ? { hunter, fugitive: fallbackCell } : null;
+      const shuffled = MapGenerator._shuffled(pool, rng);
+      return {
+        cops: shuffled.slice(0, settings.hunters),
+        fugitives: shuffled.slice(settings.hunters, total)
+      };
     }
 
-    static _fallback(grid) {
-      const spawns = grid.loadLayout(MapGenerator.FALLBACK_LAYOUT);
-      if (!spawns || !spawns.hunter || !spawns.fugitive) {
-        return { hunter: { x: 1, y: 1 }, fugitive: { x: 8, y: 11 } };
+    static _spaced(fugitives, cops, exitCell, gap) {
+      // Don't let a hunter start on the exit's doorstep: it would turn every
+      // hunt into a camping exercise.
+      for (const cop of cops) {
+        if (manhattan(cop, exitCell) < 2) return false;
       }
-      return spawns;
+      // At least one hunter should be nearer the exit than every fugitive, so
+      // cutting the escape off is a real plan rather than a hopeless race.
+      let closestCop = Infinity;
+      for (const cop of cops) closestCop = Math.min(closestCop, manhattan(cop, exitCell));
+
+      for (const fugitive of fugitives) {
+        if (manhattan(fugitive, exitCell) < gap) return false;
+        if (closestCop >= manhattan(fugitive, exitCell)) return false;
+        for (const cop of cops) {
+          if (manhattan(fugitive, cop) < gap) return false;
+        }
+      }
+      return true;
     }
 
-    static _pick(cells, rng) {
-      return cells[Math.floor(rng() * cells.length)];
+    static _fallback(grid, settings) {
+      grid.reset();
+      const exitCell = { x: Math.floor(grid.w / 2), y: grid.h - 2 };
+      grid.setTile(exitCell.x, exitCell.y, TILE.EXIT);
+      const cops = [];
+      const fugitives = [];
+      for (let i = 0; i < settings.hunters; i++) cops.push({ x: 1, y: 1 + i * 2 });
+      for (let i = 0; i < settings.fugitives; i++) fugitives.push({ x: grid.w - 2, y: 1 + i * 2 });
+      return { cops, fugitives };
+    }
+
+    static _shuffled(cells, rng) {
+      const out = cells.slice();
+      for (let i = out.length - 1; i > 0; i--) {
+        const j = Math.floor(rng() * (i + 1));
+        const tmp = out[i];
+        out[i] = out[j];
+        out[j] = tmp;
+      }
+      return out;
     }
   }
 
@@ -861,12 +1024,18 @@
       this.recent = [];
     }
 
-    chooseMove(grid, hunter, fugitive, turn = 0) {
-      const options = this._legalMoves(grid, hunter, fugitive);
+    chooseMove(grid, cops, fugitive, others, round = 0) {
+      const blocked = [];
+      for (const cop of cops) blocked.push(cop);
+      for (const other of others) {
+        if (other.status === 'active' && !same(other, fugitive)) blocked.push(other);
+      }
+
+      const options = this._legalMoves(grid, fugitive, blocked);
       if (options.length === 0) return fugitive;
 
-      const exitField = Pathfinding.distanceField(grid, grid.exits, [hunter]);
-      const urgency = clamp(turn / (URGENCY_TURNS[this.difficulty] || 20), 0, 1);
+      const exitField = Pathfinding.distanceField(grid, grid.exits, blocked);
+      const urgency = clamp(round / (URGENCY_TURNS[this.difficulty] || 20), 0, 1);
 
       let choice;
       switch (this.difficulty) {
@@ -874,10 +1043,10 @@
           choice = this._randomMove(options);
           break;
         case AI.HARD:
-          choice = this._cautiousMove(grid, options, exitField, hunter, urgency);
+          choice = this._cautiousMove(grid, options, exitField, cops, urgency);
           break;
         case AI.EXPERT:
-          choice = this._expertMove(grid, options, exitField, hunter, fugitive, urgency);
+          choice = this._expertMove(grid, options, exitField, cops, fugitive, urgency);
           break;
         default:
           choice = this._greedyMove(grid, options, exitField);
@@ -887,12 +1056,17 @@
       return choice;
     }
 
-    _legalMoves(grid, hunter, fugitive) {
-      return grid.neighbors(fugitive.x, fugitive.y).filter((cell) => !same(cell, hunter));
+    _legalMoves(grid, fugitive, blocked) {
+      const moves = [];
+      for (const cell of grid.neighbors(fugitive.x, fugitive.y)) {
+        if (blocked.some((actor) => same(actor, cell))) continue;
+        moves.push(cell);
+      }
+      return moves;
     }
 
     _remember(cell) {
-      this.recent.push(cell);
+      this.recent.push({ x: cell.x, y: cell.y });
       if (this.recent.length > 4) this.recent.shift();
     }
 
@@ -921,13 +1095,13 @@
       return best[Math.floor(this.random() * best.length)];
     }
 
-    _cautiousMove(grid, options, exitField, hunter, urgency) {
+    _cautiousMove(grid, options, exitField, cops, urgency) {
       const threatWeight = lerp(3, 0, urgency);
       let best = options[0];
       let bestScore = Infinity;
       for (const cell of options) {
         const distance = exitField.get(idOf(grid, cell)) ?? Infinity;
-        let score = distance + this._threat(cell, hunter) * threatWeight;
+        let score = distance + this._threat(cell, cops) * threatWeight;
         if (this._wasRecent(cell)) score += 2 * (1 - urgency) + 1;
         if (score < bestScore) {
           bestScore = score;
@@ -937,11 +1111,11 @@
       return best;
     }
 
-    _expertMove(grid, options, exitField, hunter, fugitive, urgency) {
+    _expertMove(grid, options, exitField, cops, fugitive, urgency) {
       let best = fugitive;
       let bestScore = -Infinity;
       for (const cell of options) {
-        const score = this._scoreExpertCell(grid, cell, exitField, hunter, urgency);
+        const score = this._scoreExpertCell(grid, cell, exitField, cops, urgency);
         if (score > bestScore) {
           bestScore = score;
           best = cell;
@@ -950,56 +1124,59 @@
       return best;
     }
 
-    _scoreExpertCell(grid, cell, exitField, hunter, urgency) {
+    _scoreExpertCell(grid, cell, exitField, cops, urgency) {
       if (grid.isExit(cell.x, cell.y)) return 10000;
 
-      // A real A* plan with the hunter's body treated as blocked.
-      const route = this._nearestExitPath(grid, cell, hunter);
+      const route = this._nearestExitPath(grid, cell, cops);
       if (route.length === 0) return -10000;
       const distance = route.length;
-      const survival = this._simulatePursuit(grid, cell, hunter, exitField);
+      const survival = this._simulatePursuit(grid, cell, cops, exitField);
       const openness = grid.neighbors(cell.x, cell.y).length;
-      const routes = this._routeOptions(grid, exitField, cell, hunter, distance);
+      const routes = this._routeOptions(grid, exitField, cell, cops, distance);
 
       let score = 0;
       score += survival * lerp(45, 0, urgency);
       score -= distance * lerp(7, 14, urgency);
       score += openness * 6 * (1 - urgency);
       score += routes * 9 * (1 - urgency);
-      score -= this._threat(cell, hunter) * 2 * (1 - urgency);
+      score -= this._threat(cell, cops) * 2 * (1 - urgency);
       if (openness <= 1) score -= 30 * (1 - urgency);
-      if (chebyshev(cell, hunter) <= 1) score -= 150 * (1 - urgency);
+      if (this._threat(cell, cops) >= 12) score -= 150 * (1 - urgency);
       if (this._wasRecent(cell)) score -= 24 * (1 - urgency) + 3;
       return score;
     }
 
-    _routeOptions(grid, exitField, cell, hunter, distance) {
+    _routeOptions(grid, exitField, cell, cops, distance) {
       let routes = 0;
       for (const next of grid.neighbors(cell.x, cell.y)) {
-        if (same(next, hunter)) continue;
+        if (cops.some((cop) => same(cop, next))) continue;
         const nextDistance = exitField.get(idOf(grid, next));
         if (nextDistance !== undefined && nextDistance <= distance + 1) routes += 1;
       }
       return routes;
     }
 
-    _nearestExitPath(grid, from, hunter) {
+    _nearestExitPath(grid, from, cops) {
       let best = [];
       for (const exitCell of grid.exits) {
-        const path = Pathfinding.findPath(grid, from, exitCell, [hunter]);
+        const path = Pathfinding.findPath(grid, from, exitCell, cops);
         if (path.length === 0) continue;
         if (best.length === 0 || path.length < best.length) best = path;
       }
       return best;
     }
 
-    _simulatePursuit(grid, start, hunterStart, exitField) {
+    _simulatePursuit(grid, start, cops, exitField) {
       let fugitive = start;
-      let hunter = hunterStart;
+      const hunters = cops.map((cop) => ({ x: cop.x, y: cop.y }));
       for (let turn = 0; turn < 3; turn++) {
-        hunter = this._hunterStep(grid, hunter, fugitive);
-        if (same(hunter, fugitive)) return turn;
-        fugitive = this._fleeStep(grid, fugitive, hunter, exitField);
+        for (const hunter of hunters) {
+          const step = this._hunterStep(grid, hunter, fugitive);
+          hunter.x = step.x;
+          hunter.y = step.y;
+          if (same(hunter, fugitive)) return turn;
+        }
+        fugitive = this._fleeStep(grid, fugitive, hunters, exitField);
         if (grid.isExit(fugitive.x, fugitive.y)) return 4;
       }
       return 3;
@@ -1010,14 +1187,14 @@
       return path.length > 0 ? path[0] : hunter;
     }
 
-    _fleeStep(grid, fugitive, hunter, exitField) {
-      const options = this._legalMoves(grid, hunter, fugitive);
+    _fleeStep(grid, fugitive, cops, exitField) {
+      const options = this._legalMoves(grid, fugitive, cops);
       if (options.length === 0) return fugitive;
       let best = fugitive;
       let bestScore = Infinity;
       for (const cell of options) {
         const distance = exitField.get(idOf(grid, cell)) ?? Infinity;
-        const score = distance + this._threat(cell, hunter) * 2;
+        const score = distance + this._threat(cell, cops) * 2;
         if (score < bestScore) {
           bestScore = score;
           best = cell;
@@ -1026,84 +1203,194 @@
       return best;
     }
 
-    _threat(cell, hunter) {
-      switch (chebyshev(cell, hunter)) {
-        case 0: return 24;
-        case 1: return 12;
-        case 2: return 4;
-        default: return 0;
+    _threat(cell, cops) {
+      let threat = 0;
+      for (const cop of cops) {
+        const distance = chebyshev(cell, cop);
+        if (distance === 0) return 24;
+        if (distance === 1) threat = Math.max(threat, 12);
+        else if (distance === 2) threat = Math.max(threat, 4);
       }
+      return threat;
     }
   }
 
   class Game {
-    /** The fugitive runs out of steam this often (in hunter turns). */
+    /** The fugitives lose every fifth round to exhaustion. */
     static get REST_INTERVAL() { return 5; }
 
-    constructor(rng = Math.random, difficulty = AI.NORMAL) {
+    constructor(rng, settings) {
       this.rng = rng;
-      this.ai = new FugitiveAI(difficulty);
+      this.settings = { ...settings };
+      this.aiList = [];
       this.grid = null;
-      this.hunter = { x: 0, y: 0 };
-      this.fugitive = { x: 0, y: 0 };
-      this.turn = 0;
-      this.state = 'idle';
+      this.cops = [];
+      this.fugitives = [];
+      this.round = 1;
+      this.phase = 'cops';
+      this.selectedCopId = null;
+      this.caught = 0;
+      this.escaped = 0;
       this.outcome = null;
+      this.resting = false;
     }
 
-    newGame() {
+    newGame(settings = this.settings) {
+      this.settings = { ...settings };
       this.grid = new Grid();
-      const spawns = MapGenerator.generate(this.grid, this.rng);
-      this.hunter = { ...spawns.hunter };
-      this.fugitive = { ...spawns.fugitive };
-      this.turn = 0;
-      this.state = 'player';
+      const spawns = MapGenerator.generate(this.grid, this.rng, this.settings);
+      this.cops = spawns.cops.map((cell, index) => ({ id: `c${index}`, x: cell.x, y: cell.y, moved: false }));
+      this.fugitives = spawns.fugitives.map((cell, index) => ({ id: `f${index}`, x: cell.x, y: cell.y, status: 'active', movedThisPhase: false }));
+      this.aiList = this.fugitives.map(() => {
+        const ai = new FugitiveAI(this.settings.difficulty);
+        ai.random = this.rng;
+        return ai;
+      });
+      this.round = 1;
+      this.caught = 0;
+      this.escaped = 0;
       this.outcome = null;
-      this.ai.reset();
-      this.ai.random = this.rng;
+      this.phase = 'cops';
+      this.selectedCopId = null;
+      this.resting = false;
+      this.beginRound();
       return this;
     }
 
-    move(direction) {
-      if (this.state !== 'player') return { kind: 'ignored' };
-      const target = { x: this.hunter.x + direction[0], y: this.hunter.y + direction[1] };
-      if (!this.grid.isWalkable(target.x, target.y)) return { kind: 'blocked', direction };
+    get totalFugitives() { return this.fugitives.length; }
 
-      this.hunter = target;
-      this.turn += 1;
-      if (same(this.hunter, this.fugitive)) {
-        this.state = 'over';
-        this.outcome = 'hunter';
-        return { kind: 'capture' };
-      }
-      this.state = 'fugitive';
-      return { kind: 'moved' };
+    activeFugitives() {
+      return this.fugitives.filter((fugitive) => fugitive.status === 'active');
     }
 
-    moveFugitive() {
-      if (this.state !== 'fugitive') return { kind: 'ignored' };
+    copById(id) {
+      return this.cops.find((cop) => cop.id === id) || null;
+    }
 
-      // Every few turns the fugitive has to catch its breath. Without this a
-      // perfect evader can circle a loop forever at equal speed.
-      if (this.turn > 0 && this.turn % Game.REST_INTERVAL === 0) {
-        this.state = 'player';
-        return { kind: 'rest' };
+    copAt(x, y) {
+      return this.cops.find((cop) => cop.x === x && cop.y === y) || null;
+    }
+
+    fugitiveAt(x, y) {
+      return this.activeFugitives().find((fugitive) => fugitive.x === x && fugitive.y === y) || null;
+    }
+
+    copTargets(cop) {
+      const targets = [];
+      for (const [dx, dy] of DIRS) {
+        const x = cop.x + dx;
+        const y = cop.y + dy;
+        if (!this.grid.isWalkable(x, y)) continue;
+        if (this.cops.some((other) => other !== cop && other.x === x && other.y === y)) continue;
+        targets.push({ x, y });
+      }
+      return targets;
+    }
+
+    canCopMove(cop) {
+      return this.copTargets(cop).length > 0;
+    }
+
+    beginRound() {
+      this.phase = 'cops';
+      for (const cop of this.cops) cop.moved = !this.canCopMove(cop);
+      const next = this.cops.find((cop) => !cop.moved) || null;
+      this.selectedCopId = next ? next.id : null;
+      if (!this.selectedCopId) this.beginFugitivePhase();
+    }
+
+    selectCop(id) {
+      if (this.phase !== 'cops') return false;
+      const cop = this.copById(id);
+      if (!cop || cop.moved) return false;
+      this.selectedCopId = id;
+      return true;
+    }
+
+    moveSelected(dx, dy) {
+      if (this.phase !== 'cops') return { kind: 'ignored' };
+      const cop = this.copById(this.selectedCopId);
+      if (!cop || cop.moved) return { kind: 'ignored' };
+
+      const target = { x: cop.x + dx, y: cop.y + dy };
+      if (!this.grid.isWalkable(target.x, target.y)) return { kind: 'blocked' };
+      if (this.cops.some((other) => other !== cop && same(other, target))) return { kind: 'blocked' };
+
+      const victim = this.fugitiveAt(target.x, target.y);
+      cop.x = target.x;
+      cop.y = target.y;
+      cop.moved = true;
+
+      if (victim) {
+        victim.status = 'caught';
+        this.caught += 1;
       }
 
-      this.fugitive = this.ai.chooseMove(this.grid, this.hunter, this.fugitive, this.turn);
+      if (this.activeFugitives().length === 0) {
+        this.finish();
+        return { kind: victim ? 'capture' : 'moved', captured: Boolean(victim), gameOver: true };
+      }
 
-      if (same(this.hunter, this.fugitive)) {
-        this.state = 'over';
-        this.outcome = 'hunter';
-        return { kind: 'capture' };
+      const next = this.cops.find((other) => !other.moved) || null;
+      this.selectedCopId = next ? next.id : null;
+      if (!this.selectedCopId) this.beginFugitivePhase();
+      return { kind: victim ? 'capture' : 'moved', captured: Boolean(victim) };
+    }
+
+    beginFugitivePhase() {
+      if (this.phase === 'over') return;
+      this.phase = 'fugitives';
+      this.resting = this.round % Game.REST_INTERVAL === 0;
+      for (const fugitive of this.fugitives) fugitive.movedThisPhase = false;
+    }
+
+    nextFugitive() {
+      return this.activeFugitives().find((fugitive) => !fugitive.movedThisPhase) || null;
+    }
+
+    stepFugitive() {
+      if (this.phase !== 'fugitives' || this.resting) return null;
+      const fugitive = this.nextFugitive();
+      if (!fugitive) return null;
+
+      const index = this.fugitives.indexOf(fugitive);
+      const ai = this.aiList[index];
+      const others = this.activeFugitives().filter((other) => other !== fugitive);
+      const next = ai.chooseMove(this.grid, this.cops, fugitive, others, this.round);
+
+      fugitive.movedThisPhase = true;
+      if (same(next, fugitive)) return { kind: 'blocked', fugitive };
+
+      fugitive.x = next.x;
+      fugitive.y = next.y;
+      if (this.grid.isExit(fugitive.x, fugitive.y)) {
+        fugitive.status = 'escaped';
+        this.escaped += 1;
+        if (this.activeFugitives().length === 0) this.finish();
+        return { kind: 'escaped', fugitive };
       }
-      if (this.grid.isExit(this.fugitive.x, this.fugitive.y)) {
-        this.state = 'over';
-        this.outcome = 'fugitive';
-        return { kind: 'escape' };
+      return { kind: 'moved', fugitive };
+    }
+
+    endFugitivePhase() {
+      if (this.phase === 'over') return true;
+      if (this.activeFugitives().length === 0) {
+        this.finish();
+        return true;
       }
-      this.state = 'player';
-      return { kind: 'moved' };
+      this.round += 1;
+      this.beginRound();
+      return this.phase === 'over';
+    }
+
+    finish() {
+      this.phase = 'over';
+      this.outcome = this.escaped === 0 ? 'cops' : 'fugitives';
+    }
+
+    setDifficulty(difficulty) {
+      this.settings.difficulty = difficulty;
+      for (const ai of this.aiList) ai.difficulty = difficulty;
     }
   }
 
@@ -1123,11 +1410,13 @@
     hunter: '#ffb13a',
     fugitive: '#a76fff',
     ink: '#0b1019',
-    hover: 'rgba(90, 209, 255, 0.55)'
+    hover: 'rgba(90, 209, 255, 0.55)',
+    selected: 'rgba(90, 209, 255, 0.95)'
   };
 
   const FONT = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
-  const START_STATUS = 'Hunt the fugitive before it slips through the exit.';
+  const SETTINGS_KEY = 'escape-hunter-settings-v3';
+  const DEFAULT_SETTINGS = { hunters: 1, fugitives: 1, walls: 40, difficulty: 1 };
 
   function shade(hex, factor) {
     const value = parseInt(hex.slice(1), 16);
@@ -1142,8 +1431,16 @@
       canvas: document.getElementById('board'),
       turn: document.getElementById('turn'),
       difficulty: document.getElementById('difficulty'),
+      hunters: document.getElementById('hunters'),
+      fugitives: document.getElementById('fugitives'),
+      walls: document.getElementById('walls'),
+      wallsValue: document.getElementById('walls-value'),
+      apply: document.getElementById('apply'),
+      setup: document.getElementById('setup'),
+      setupSummary: document.getElementById('setup-summary'),
       restart: document.getElementById('restart'),
       status: document.getElementById('status'),
+      tally: document.getElementById('tally'),
       overlay: document.getElementById('overlay'),
       card: document.getElementById('result-card'),
       resultTitle: document.getElementById('result-title'),
@@ -1162,23 +1459,76 @@
       ox: 0,
       oy: 0,
       time: 0,
-      hunterVisual: { x: 0, y: 0 },
-      fugitiveVisual: { x: 0, y: 0 },
-      nudge: { x: 0, y: 0 },
+      copVisuals: new Map(),
+      fugitiveVisuals: new Map(),
+      nudge: { id: null, x: 0, y: 0 },
       hover: null,
       restFlash: 0
     };
 
     let game = null;
     let token = 0;
-    let lastFrame = performance.now();
+    let running = false;
+    let phaseTimer = null;
+    let lastRound = 1;
     let dragStart = null;
+    let lastFrame = performance.now();
+
+    function plural(one, many) {
+      return game && game.totalFugitives === 1 ? one : many;
+    }
+
+    function readSettings() {
+      return {
+        hunters: clamp(Number(els.hunters.value) || 1, 1, MAX_ACTORS),
+        fugitives: clamp(Number(els.fugitives.value) || 1, 1, MAX_ACTORS),
+        walls: clamp(Number(els.walls.value) || 40, 20, 60),
+        difficulty: clamp(Number(els.difficulty.value) || 0, 0, 3)
+      };
+    }
+
+    function applySettingsToControls(settings) {
+      els.hunters.value = String(settings.hunters);
+      els.fugitives.value = String(settings.fugitives);
+      els.walls.value = String(settings.walls);
+      els.wallsValue.textContent = `${settings.walls}%`;
+      els.difficulty.value = String(settings.difficulty);
+    }
+
+    function updateSetupSummary() {
+      const current = readSettings();
+      els.setupSummary.textContent =
+        `${current.hunters} hunter${current.hunters === 1 ? '' : 's'} \u00b7 ` +
+        `${current.fugitives} fugitive${current.fugitives === 1 ? '' : 's'} \u00b7 ` +
+        `${current.walls}% walls`;
+    }
+
+    function loadSettings() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || 'null');
+        if (saved && typeof saved === 'object') {
+          return {
+            hunters: clamp(Number(saved.hunters) || 1, 1, MAX_ACTORS),
+            fugitives: clamp(Number(saved.fugitives) || 1, 1, MAX_ACTORS),
+            walls: clamp(Number(saved.walls) || 40, 20, 60),
+            difficulty: clamp(Number(saved.difficulty) || 0, 0, 3)
+          };
+        }
+      } catch (error) { /* storage unavailable */ }
+      return { ...DEFAULT_SETTINGS };
+    }
+
+    function saveSettings(settings) {
+      try {
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+      } catch (error) { /* storage unavailable */ }
+    }
 
     function setStatus(text) {
       els.status.textContent = text;
     }
 
-    function popTurn() {
+    function popRound() {
       if (typeof els.turn.animate === 'function') {
         els.turn.animate(
           [{ transform: 'scale(1)' }, { transform: 'scale(1.16)' }, { transform: 'scale(1)' }],
@@ -1187,28 +1537,54 @@
       }
     }
 
-    function hint() {
-      const distance = manhattan(game.hunter, game.fugitive);
-      if (distance <= 1) return 'It is right beside you - one clean step closes the hunt.';
-      if (distance <= 3) return `Close in. The fugitive is ${distance} tiles away.`;
-      return `Your move. The fugitive is ${distance} tiles away.`;
+    function updateHud() {
+      if (!game) return;
+      els.turn.textContent = String(game.round);
+      if (game.round !== lastRound) {
+        lastRound = game.round;
+        popRound();
+      }
+      const active = game.activeFugitives().length;
+      els.tally.innerHTML = `Caught <b>${game.caught}</b> / ${game.totalFugitives} &middot; Escaped <b>${game.escaped}</b>` +
+        (active > 0 && active < game.totalFugitives ? ` &middot; Left <b>${active}</b>` : '');
+    }
+
+    function clearPhaseTimer() {
+      if (phaseTimer !== null) {
+        window.clearTimeout(phaseTimer);
+        phaseTimer = null;
+      }
     }
 
     function newGame() {
       token += 1;
-      game = new Game(rng, Number(els.difficulty.value));
+      running = false;
+      clearPhaseTimer();
+      const settings = readSettings();
+      saveSettings(settings);
+      updateSetupSummary();
+      game = new Game(rng, settings);
       game.newGame();
-      view.hunterVisual = { ...game.hunter };
-      view.fugitiveVisual = { ...game.fugitive };
-      view.nudge = { x: 0, y: 0 };
+      lastRound = 1;
+      view.copVisuals.clear();
+      view.fugitiveVisuals.clear();
+      for (const cop of game.cops) view.copVisuals.set(cop.id, { x: cop.x, y: cop.y });
+      for (const fugitive of game.fugitives) view.fugitiveVisuals.set(fugitive.id, { x: fugitive.x, y: fugitive.y });
+      view.nudge = { id: null, x: 0, y: 0 };
       view.hover = null;
       view.restFlash = 0;
-      els.turn.textContent = '0';
       els.overlay.classList.remove('open');
       els.overlay.setAttribute('aria-hidden', 'true');
       els.card.classList.remove('lose');
-      setStatus(START_STATUS);
+      els.turn.textContent = '1';
+      updateHud();
+      syncVisuals(true);
       resizeCanvas();
+      if (game.phase === 'fugitives') {
+        startFugitivePhase();
+      } else {
+        updateCopMessage();
+      }
     }
 
     function restart() {
@@ -1217,63 +1593,171 @@
       newGame();
     }
 
-    function scheduleFugitive() {
+    function syncVisuals(instant = false) {
+      const living = new Set();
+      for (const fugitive of game.fugitives) {
+        if (fugitive.status !== 'active') continue;
+        living.add(fugitive.id);
+        const visual = view.fugitiveVisuals.get(fugitive.id);
+        if (!visual) {
+          view.fugitiveVisuals.set(fugitive.id, { x: fugitive.x, y: fugitive.y });
+        } else if (instant) {
+          visual.x = fugitive.x;
+          visual.y = fugitive.y;
+        }
+      }
+      for (const id of [...view.fugitiveVisuals.keys()]) {
+        if (!living.has(id)) view.fugitiveVisuals.delete(id);
+      }
+
+      for (const cop of game.cops) {
+        const visual = view.copVisuals.get(cop.id);
+        if (!visual) {
+          view.copVisuals.set(cop.id, { x: cop.x, y: cop.y });
+        } else if (instant) {
+          visual.x = cop.x;
+          visual.y = cop.y;
+        }
+      }
+    }
+
+    function updateCopMessage() {
+      if (!game || game.phase !== 'cops') return;
+      const left = game.cops.filter((cop) => !cop.moved).length;
+      if (left === game.cops.length) {
+        setStatus('Move each hunter once, then the fugitives run.');
+      } else if (left > 0) {
+        setStatus(`${left} hunter${left === 1 ? '' : 's'} left to move this round.`);
+      }
+    }
+
+    function startFugitivePhase() {
+      if (!game || running || game.phase !== 'fugitives') return;
+      running = true;
       const myToken = ++token;
-      window.setTimeout(() => {
-        if (myToken !== token || !game || game.state !== 'fugitive') return;
-        const result = game.moveFugitive();
-        if (result.kind === 'rest') {
-          view.restFlash = 1;
-          setStatus('The fugitive is exhausted and loses a turn.');
-          return;
-        }
-        if (game.state === 'over') {
-          finishGame();
-          return;
-        }
-        if (game.state === 'player') setStatus(hint());
-      }, 190);
-    }
+      clearPhaseTimer();
 
-    function finishGame() {
-      const myToken = token;
-      setStatus(game.outcome === 'hunter' ? 'Case closed.' : 'The exit swallowed your target.');
-      window.setTimeout(() => {
+      if (game.resting) {
+        view.restFlash = 1.4;
+        setStatus(plural(
+          'The fugitive is exhausted and loses this round.',
+          'The fugitives are exhausted and lose this round.'
+        ));
+        phaseTimer = window.setTimeout(() => {
+          if (myToken !== token) return;
+          running = false;
+          const over = game.endFugitivePhase();
+          updateHud();
+          syncVisuals();
+          if (over || game.phase === 'over') {
+            scheduleResult();
+          } else if (game.phase === 'fugitives') {
+            startFugitivePhase();
+          } else {
+            updateCopMessage();
+          }
+        }, 900);
+        return;
+      }
+
+      setStatus(plural('The fugitive is on the move...', 'The fugitives are on the move...'));
+
+      const step = () => {
         if (myToken !== token) return;
-        showResult();
-      }, 260);
+        const result = game.stepFugitive();
+        if (!result) {
+          running = false;
+          const over = game.endFugitivePhase();
+          updateHud();
+          syncVisuals();
+          if (over || game.phase === 'over') {
+            scheduleResult();
+          } else if (game.phase === 'fugitives') {
+            startFugitivePhase();
+          } else {
+            updateCopMessage();
+          }
+          return;
+        }
+
+        syncVisuals();
+        if (result.kind === 'escaped') {
+          updateHud();
+          setStatus(`A fugitive escaped! ${game.activeFugitives().length} still out there.`);
+        }
+        if (game.phase === 'over') {
+          running = false;
+          updateHud();
+          scheduleResult();
+          return;
+        }
+        phaseTimer = window.setTimeout(step, 230);
+      };
+
+      phaseTimer = window.setTimeout(step, 300);
     }
 
-    function showResult() {
-      const won = game.outcome === 'hunter';
-      els.card.classList.toggle('lose', !won);
-      els.resultTitle.textContent = won ? 'CAUGHT' : 'ESCAPED';
-      els.resultMessage.textContent = won
-        ? `You pinned the fugitive after ${game.turn} turn${game.turn === 1 ? '' : 's'}. Press R to hunt again.`
-        : `The fugitive reached the exit on turn ${game.turn}. Press R for a new map.`;
-      els.overlay.classList.add('open');
-      els.overlay.setAttribute('aria-hidden', 'false');
-      els.again.focus({ preventScroll: true });
-    }
+    function performMove(dx, dy) {
+      if (!game || game.phase !== 'cops') return;
+      const before = game.copById(game.selectedCopId);
+      const result = game.moveSelected(dx, dy);
 
-    function handleMove(direction) {
-      if (!game || game.state !== 'player' || !direction) return;
-      const result = game.move(direction);
       if (result.kind === 'blocked') {
-        view.nudge = { x: direction[0] * 8, y: direction[1] * 8 };
+        view.nudge = { id: before ? before.id : null, x: dx * 8, y: dy * 8 };
         return;
       }
       if (result.kind === 'ignored') return;
 
-      els.turn.textContent = String(game.turn);
-      popTurn();
+      syncVisuals();
+      updateHud();
 
-      if (game.state === 'over') {
-        finishGame();
+      if (game.phase === 'over') {
+        scheduleResult();
         return;
       }
-      setStatus('The fugitive is on the move...');
-      scheduleFugitive();
+
+      if (result.captured) {
+        const left = game.activeFugitives().length;
+        setStatus(left > 0 ? `Fugitive caught! ${left} still out there.` : 'Every fugitive is caught.');
+      } else {
+        updateCopMessage();
+      }
+
+      if (game.phase === 'fugitives') {
+        startFugitivePhase();
+      }
+    }
+
+    function selectCop(id) {
+      if (!game || game.phase !== 'cops') return;
+      if (game.selectCop(id)) {
+        updateCopMessage();
+      }
+    }
+
+    function scheduleResult() {
+      if (!game) return;
+      const myToken = token;
+      updateHud();
+      setStatus(game.outcome === 'cops' ? 'Case closed.' : 'At least one fugitive got away.');
+      clearPhaseTimer();
+      phaseTimer = window.setTimeout(() => {
+        if (myToken !== token) return;
+        showResult();
+      }, 380);
+    }
+
+    function showResult() {
+      const won = game.outcome === 'cops';
+      els.card.classList.toggle('lose', !won);
+      els.resultTitle.textContent = won ? 'CAUGHT' : 'ESCAPED';
+      const rounds = `${game.round} round${game.round === 1 ? '' : 's'}`;
+      els.resultMessage.textContent = won
+        ? `All ${game.totalFugitives} fugitive${game.totalFugitives === 1 ? '' : 's'} caught in ${rounds}.`
+        : `${game.caught} of ${game.totalFugitives} caught, ${game.escaped} escaped after ${rounds}.`;
+      els.overlay.classList.add('open');
+      els.overlay.setAttribute('aria-hidden', 'false');
+      els.again.focus({ preventScroll: true });
     }
 
     function directionForKey(event) {
@@ -1304,30 +1788,49 @@
         restart();
         return;
       }
+      if (/^[1-5]$/.test(event.key) && game) {
+        const cop = game.cops[Number(event.key) - 1];
+        if (cop) selectCop(cop.id);
+        return;
+      }
       const direction = directionForKey(event);
       if (!direction) return;
       event.preventDefault();
-      handleMove(direction);
+      performMove(direction[0], direction[1]);
     });
 
     els.restart.addEventListener('click', restart);
     els.again.addEventListener('click', restart);
-
-    const padDirections = {
-      up: [0, -1], right: [1, 0], down: [0, 1], left: [-1, 0]
-    };
-    document.querySelectorAll('.touchpad button').forEach((button) => {
-      button.addEventListener('click', () => {
-        handleMove(padDirections[button.dataset.move]);
-        button.blur();
-      });
+    els.apply.addEventListener('click', () => {
+      els.apply.blur();
+      newGame();
+      if (window.matchMedia('(max-width: 760px)').matches) els.setup.open = false;
     });
 
+    els.hunters.addEventListener('change', updateSetupSummary);
+    els.fugitives.addEventListener('change', updateSetupSummary);
+
     els.difficulty.addEventListener('change', () => {
-      game.ai.difficulty = Number(els.difficulty.value);
-      const info = DIFFICULTY[game.ai.difficulty];
+      if (!game) return;
+      const difficulty = Number(els.difficulty.value);
+      game.setDifficulty(difficulty);
+      const info = DIFFICULTY[difficulty];
       setStatus(`Difficulty ${info.name} - ${info.hint}`);
+      saveSettings(readSettings());
       els.difficulty.blur();
+    });
+
+    els.walls.addEventListener('input', () => {
+      els.wallsValue.textContent = `${els.walls.value}%`;
+      updateSetupSummary();
+    });
+
+    const padDirections = { up: [0, -1], right: [1, 0], down: [0, 1], left: [-1, 0] };
+    document.querySelectorAll('.touchpad button').forEach((button) => {
+      button.addEventListener('click', () => {
+        performMove(padDirections[button.dataset.move][0], padDirections[button.dataset.move][1]);
+        button.blur();
+      });
     });
 
     function cellFromEvent(event) {
@@ -1341,13 +1844,19 @@
       return { x, y };
     }
 
-    function tapCell(cell) {
-      if (!game || game.state !== 'player') return;
-      const dx = cell.x - game.hunter.x;
-      const dy = cell.y - game.hunter.y;
+    function handleCell(cell) {
+      if (!game || game.phase !== 'cops') return;
+      const cop = game.copAt(cell.x, cell.y);
+      if (cop) {
+        if (!cop.moved) selectCop(cop.id);
+        return;
+      }
+      const selected = game.copById(game.selectedCopId);
+      if (!selected) return;
+      const dx = cell.x - selected.x;
+      const dy = cell.y - selected.y;
       if (Math.abs(dx) + Math.abs(dy) !== 1) return;
-      if (!game.grid.isWalkable(cell.x, cell.y)) return;
-      handleMove([dx, dy]);
+      performMove(dx, dy);
     }
 
     els.canvas.addEventListener('pointerdown', (event) => {
@@ -1365,12 +1874,12 @@
       dragStart = null;
 
       if (Math.hypot(dx, dy) >= 24) {
-        if (Math.abs(dx) >= Math.abs(dy)) handleMove([dx > 0 ? 1 : -1, 0]);
-        else handleMove([0, dy > 0 ? 1 : -1]);
+        if (Math.abs(dx) >= Math.abs(dy)) performMove(dx > 0 ? 1 : -1, 0);
+        else performMove(0, dy > 0 ? 1 : -1);
         return;
       }
       const cell = cellFromEvent(event);
-      if (cell) tapCell(cell);
+      if (cell) handleCell(cell);
     });
 
     els.canvas.addEventListener('pointercancel', () => { dragStart = null; });
@@ -1480,10 +1989,13 @@
       if (tile === TILE.EXIT) drawExit(x + cell / 2, y + cell / 2, cell);
     }
 
-    function drawActor(position, color, letter, offsetX, offsetY, cell, ox, oy) {
+    function drawActor(position, color, letter, cell, ox, oy, alpha = 1, offsetX = 0, offsetY = 0) {
       const cx = ox + (position.x + 0.5) * cell + offsetX;
       const cy = oy + (position.y + 0.5) * cell + offsetY;
       const radius = cell * 0.32;
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
 
       ctx.beginPath();
       ctx.ellipse(cx, cy + radius * 0.14, radius * 1.02, radius * 0.98, 0, 0, TAU);
@@ -1511,6 +2023,29 @@
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(letter, cx, cy + radius * 0.06);
+      ctx.restore();
+    }
+
+    function drawSelection(visual, cell, ox, oy, pulse) {
+      const cx = ox + (visual.x + 0.5) * cell;
+      const cy = oy + (visual.y + 0.5) * cell;
+      const radius = cell * (0.4 + 0.03 * pulse);
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, TAU);
+      ctx.strokeStyle = COLORS.selected;
+      ctx.lineWidth = Math.max(2, cell * 0.04);
+      ctx.stroke();
+    }
+
+    function drawMoveDots(cop, cell, ox, oy) {
+      for (const target of game.copTargets(cop)) {
+        const cx = ox + (target.x + 0.5) * cell;
+        const cy = oy + (target.y + 0.5) * cell;
+        ctx.beginPath();
+        ctx.arc(cx, cy, Math.max(2, cell * 0.07), 0, TAU);
+        ctx.fillStyle = 'rgba(90, 209, 255, 0.5)';
+        ctx.fill();
+      }
     }
 
     function draw() {
@@ -1535,10 +2070,14 @@
         for (let x = 0; x < COLS; x++) drawTile(x, y, cell, ox, oy);
       }
 
-      if (view.hover && game.state === 'player') {
-        const dx = view.hover.x - game.hunter.x;
-        const dy = view.hover.y - game.hunter.y;
-        if (Math.abs(dx) + Math.abs(dy) === 1 && game.grid.isWalkable(view.hover.x, view.hover.y)) {
+      const selected = game.phase === 'cops' ? game.copById(game.selectedCopId) : null;
+
+      if (selected) drawMoveDots(selected, cell, ox, oy);
+
+      if (view.hover && game.phase === 'cops') {
+        const dx = view.hover.x - (selected ? selected.x : -9);
+        const dy = view.hover.y - (selected ? selected.y : -9);
+        if (selected && Math.abs(dx) + Math.abs(dy) === 1 && game.grid.isWalkable(view.hover.x, view.hover.y)) {
           const margin = Math.max(2, cell * 0.03);
           strokeRound(
             ox + view.hover.x * cell + margin,
@@ -1552,21 +2091,46 @@
         }
       }
 
-      drawActor(view.fugitiveVisual, COLORS.fugitive, 'F', 0, 0, cell, ox, oy);
-      drawActor(view.hunterVisual, COLORS.hunter, 'H', view.nudge.x, view.nudge.y, cell, ox, oy);
+      for (const fugitive of game.fugitives) {
+        if (fugitive.status !== 'active') continue;
+        const visual = view.fugitiveVisuals.get(fugitive.id);
+        if (visual) drawActor(visual, COLORS.fugitive, 'F', cell, ox, oy);
+      }
+
+      for (const cop of game.cops) {
+        const visual = view.copVisuals.get(cop.id);
+        if (!visual) continue;
+        const dim = game.phase === 'cops' && cop.moved ? 0.55 : 1;
+        const nudged = view.nudge.id === cop.id;
+        drawActor(
+          visual, COLORS.hunter, 'H', cell, ox, oy, dim,
+          nudged ? view.nudge.x : 0,
+          nudged ? view.nudge.y : 0
+        );
+      }
+
+      if (selected) {
+        const pulse = 0.5 + 0.5 * Math.sin(view.time * 3.2);
+        const visual = view.copVisuals.get(selected.id);
+        if (visual) drawSelection(visual, cell, ox, oy, pulse);
+      }
 
       if (view.restFlash > 0) {
-        const cx = ox + (view.fugitiveVisual.x + 0.5) * cell;
-        const cy = oy + (view.fugitiveVisual.y + 0.5) * cell - cell * 0.6;
         ctx.save();
         ctx.globalAlpha = Math.min(1, view.restFlash);
         ctx.fillStyle = '#a9bcd8';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.font = `700 ${Math.round(cell * 0.34)}px ${FONT}`;
-        ctx.fillText('z', cx + cell * 0.26, cy + cell * 0.2);
-        ctx.font = `700 ${Math.round(cell * 0.24)}px ${FONT}`;
-        ctx.fillText('z', cx + cell * 0.46, cy - cell * 0.1);
+        for (const fugitive of game.activeFugitives()) {
+          const visual = view.fugitiveVisuals.get(fugitive.id);
+          if (!visual) continue;
+          const cx = ox + (visual.x + 0.5) * cell;
+          const cy = oy + (visual.y + 0.5) * cell - cell * 0.6;
+          ctx.font = `700 ${Math.round(cell * 0.3)}px ${FONT}`;
+          ctx.fillText('z', cx + cell * 0.22, cy + cell * 0.18);
+          ctx.font = `700 ${Math.round(cell * 0.22)}px ${FONT}`;
+          ctx.fillText('z', cx + cell * 0.4, cy - cell * 0.1);
+        }
         ctx.restore();
       }
     }
@@ -1574,23 +2138,30 @@
     function update(delta) {
       if (!game) return;
       const weight = 1 - Math.exp(-18 * delta);
-      const targetHunter = game.hunter;
-      const targetFugitive = game.fugitive;
 
-      view.hunterVisual.x += (targetHunter.x - view.hunterVisual.x) * weight;
-      view.hunterVisual.y += (targetHunter.y - view.hunterVisual.y) * weight;
-      view.fugitiveVisual.x += (targetFugitive.x - view.fugitiveVisual.x) * weight;
-      view.fugitiveVisual.y += (targetFugitive.y - view.fugitiveVisual.y) * weight;
+      for (const fugitive of game.fugitives) {
+        if (fugitive.status !== 'active') continue;
+        const visual = view.fugitiveVisuals.get(fugitive.id);
+        if (!visual) continue;
+        visual.x += (fugitive.x - visual.x) * weight;
+        visual.y += (fugitive.y - visual.y) * weight;
+        if (Math.abs(fugitive.x - visual.x) < 0.004) visual.x = fugitive.x;
+        if (Math.abs(fugitive.y - visual.y) < 0.004) visual.y = fugitive.y;
+      }
 
-      if (Math.abs(targetHunter.x - view.hunterVisual.x) < 0.004) view.hunterVisual.x = targetHunter.x;
-      if (Math.abs(targetHunter.y - view.hunterVisual.y) < 0.004) view.hunterVisual.y = targetHunter.y;
-      if (Math.abs(targetFugitive.x - view.fugitiveVisual.x) < 0.004) view.fugitiveVisual.x = targetFugitive.x;
-      if (Math.abs(targetFugitive.y - view.fugitiveVisual.y) < 0.004) view.fugitiveVisual.y = targetFugitive.y;
+      for (const cop of game.cops) {
+        const visual = view.copVisuals.get(cop.id);
+        if (!visual) continue;
+        visual.x += (cop.x - visual.x) * weight;
+        visual.y += (cop.y - visual.y) * weight;
+        if (Math.abs(cop.x - visual.x) < 0.004) visual.x = cop.x;
+        if (Math.abs(cop.y - visual.y) < 0.004) visual.y = cop.y;
+      }
 
       const decay = Math.exp(-10 * delta);
       view.nudge.x *= decay;
       view.nudge.y *= decay;
-      if (Math.hypot(view.nudge.x, view.nudge.y) < 0.5) view.nudge = { x: 0, y: 0 };
+      if (Math.hypot(view.nudge.x, view.nudge.y) < 0.5) view.nudge = { id: null, x: 0, y: 0 };
 
       view.restFlash = Math.max(0, view.restFlash - delta * 1.1);
     }
@@ -1604,25 +2175,29 @@
       requestAnimationFrame(loop);
     }
 
+    const saved = loadSettings();
+    applySettingsToControls(saved);
+    updateSetupSummary();
+    if (window.matchMedia('(max-width: 760px)').matches) els.setup.open = false;
     newGame();
-    resizeCanvas();
     requestAnimationFrame(loop);
 
-    // Debug/test hook: lets the smoke test drive the same moves the UI does.
     window.__escapeHunter = {
       get game() { return game; },
       Grid,
       Pathfinding,
       Game,
-      input: handleMove,
-      restart
+      input: performMove,
+      restart,
+      newGame,
+      settings: readSettings
     };
   }
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
       Grid, Pathfinding, MapGenerator, FugitiveAI, Game,
-      AI, TILE, DIRS, same, manhattan, makeRng, randInt, COLS, ROWS
+      AI, TILE, DIRS, same, manhattan, chebyshev, makeRng, COLS, ROWS, MAX_ACTORS
     };
   } else if (typeof document !== 'undefined') {
     if (document.readyState === 'loading') {

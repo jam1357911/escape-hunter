@@ -1,14 +1,16 @@
 # Escape Hunter
 
-A complete turn-based pursuit game in two forms:
+A turn-based pursuit game in two forms:
 
 - **One file, zero setup** — [`index.html`](index.html) runs the whole game in
   any modern browser, offline, with no build step or dependencies.
-- **Godot 4 project** — the same rules, look and AI as a native project.
+- **Godot 4 project** — a native port of the original 1 hunter vs 1 fugitive
+  hunt.
 
-The board is **15 × 15** with roughly **40% walls**, one hunter (the cop) and
-one fugitive. Random mazes always connect, and the fugitive gets tired, so
-chases end in a capture or a clean escape instead of an endless draw.
+The board is **15 × 15**, and in the browser build you choose **1–5 hunters**,
+**1–5 fugitives** and **20–60% walls** before each hunt. Random mazes are
+always connected, and the fugitives get tired, so every hunt ends in a capture
+or a clean escape instead of an endless draw.
 
 ![Escape Hunter in the browser](docs/screenshot-web.png)
 
@@ -18,22 +20,80 @@ Open [`index.html`](index.html) — double-click it, or drag it into a browser
 tab. There is no server, no package install and no external asset: the whole
 game is inline HTML, CSS and JavaScript.
 
+### Setup panel
+
+| Setting | Range | Effect |
+| --- | --- | --- |
+| **Hunters** | 1–5 | How many hunters you control. Each one moves once per round. |
+| **Fugitives** | 1–5 | How many AI fugitives are on the board. |
+| **Walls** | 20–60% | How much of the interior is wall. Higher values make tighter mazes. |
+| **Difficulty** | Easy–Expert | How clever the fugitive AI is. |
+
+**New hunt** (or **Restart**, or **R**) starts a fresh map with the current
+settings. Settings are remembered in `localStorage`, and `?seed=123` in the
+URL makes the map reproducible.
+
+### Controls
+
 | Input | Action |
 | --- | --- |
-| Arrow keys / WASD | Move the hunter one tile |
-| Tap a neighbouring tile | Move the hunter there |
-| Swipe on the board | Move in the swipe direction |
-| On-screen D-pad (narrow screens) | Move the hunter |
-| R | Restart with a new random map |
-| Difficulty dropdown | Switch AI tier (applies from the fugitive's next move) |
-| Restart / Play Again | New map, turn counter back to 0 |
+| Arrow keys / WASD | Move the selected hunter one tile |
+| Click / tap a hunter | Select it |
+| Click / tap a neighbouring tile | Move the selected hunter there |
+| 1–5 | Select hunter 1–5 |
+| Swipe on the board | Move the selected hunter in that direction |
+| On-screen D-pad (narrow screens) | Move the selected hunter |
+| R | New hunt |
+| Difficulty dropdown | Switch AI tier immediately |
 
-Add `?seed=123` to the URL for a reproducible map, e.g.
-`index.html?seed=42`.
+The selected hunter has a cyan ring, and small blue dots mark its legal steps.
+After a hunter moves, the next hunter that still has to move is selected
+automatically.
+
+## How a round works
+
+1. You move **each hunter once** (one tile per hunter). Hunters cannot stand on
+   each other.
+2. Every active fugitive then moves one tile. Fugitives cannot step onto a
+   hunter or onto each other.
+3. Every fifth round the fugitives are exhausted and lose that move.
+4. Stepping onto a fugitive captures it. A fugitive that reaches the exit
+   escapes.
+
+The hunt ends when every fugitive has been caught or has escaped:
+
+- **CAUGHT** — every fugitive was caught. This is the only clean win for the
+  hunters.
+- **ESCAPED** — at least one fugitive reached the exit. The result card shows
+  how many were caught and how many got away.
+
+The footer tally updates live: caught / total, escaped, and how many are still
+out there.
+
+Rule 3 is the anti-draw rule. At equal speed a perfect evader can circle a loop
+forever, so the fugitives have to hand the hunters a free step every five
+rounds. That makes a capture reachable without turning the chase into a
+walkover.
+
+## Tuning the odds
+
+Some starting points:
+
+- **1 hunter vs 1 fugitive, 40%** — the original tight duel.
+- **2 vs 2, 40–50%** — more hunters means more coordination, but fugitives
+  can split up; a good middle ground.
+- **1 vs 3, 30–40%** — a hard hunt: you must cut off the exit and pick them
+  off one at a time.
+- **3 vs 1, 50%** — a short, tactical sweep; try Hard or Expert for a chase.
+
+More walls means more dead ends (good for hunters) but also more hiding
+routes. Fewer walls favours the fugitives.
 
 ## Godot 4 project
 
-The native build needs Godot **4.3** or newer (standard build, no C#). Import
+The native build is the original 1 hunter vs 1 fugitive hunt: 15 × 15, 40%
+walls, the same rest rule and AI tiers, but no setup panel. It needs Godot
+**4.3** or newer (standard build, no C#). Import
 [`project.godot`](project.godot), then press **F5**; from a terminal:
 
 ```bash
@@ -45,65 +105,41 @@ there is no tileset or sprite import step.
 
 ![Godot build](docs/screenshot.png)
 
-## Rules
-
-1. The hunter moves one tile (walls block movement).
-2. If the hunter shares the fugitive's tile, the hunter wins immediately.
-3. The fugitive moves one tile.
-4. Every fifth hunter turn the fugitive is out of breath and misses its move.
-5. If the fugitive stands on an exit, the fugitive wins.
-6. Repeat.
-
-The turn counter increments on every hunter move. The fugitive cannot step
-onto the hunter's tile, and the AI plans around the hunter's position.
-
-Rule 4 is the anti-draw rule. At equal speed a perfect evader can circle a
-loop forever, so it now has to hand the hunter a free step every five turns.
-That makes a capture genuinely reachable without turning the chase into a
-walkover; in 100 simulated hunts every game finished.
-
-When the hunt ends the result card names the winner and offers a fresh map:
-
-![Result screen](docs/screenshot-web-result.png)
-
 ## AI tiers
 
 | Tier | Behaviour |
 | --- | --- |
 | **Easy** | Uniform random legal move. |
 | **Normal** | Breadth-first exit distance field; steps to the neighbour closest to the nearest exit. |
-| **Hard** | Same exit pull, plus a threat cost for tiles within two tiles of the hunter (Chebyshev distance), so it slides around you instead of into you. |
-| **Expert** | A* route to the nearest exit, scored with a 3-turn pursuit simulation against a perfect chaser, a dead-end penalty, and a bonus for keeping several forward escape routes open. |
+| **Hard** | Same exit pull, plus a threat cost from the nearest hunter, so it slides around the hunters instead of into them. |
+| **Expert** | A* route to the nearest exit, scored with a 3-turn pursuit simulation against *all* hunters, a dead-end penalty, and a bonus for keeping several forward escape routes open. |
 
-Two details keep the chase from becoming a dance:
+More details:
 
 - Normal, Hard and Expert remember the last four tiles they left and avoid
   pacing between the same two cells.
 - After a while the fugitive stops dodging and commits to the exit — after 8
-  turns on Easy, 14 on Normal, 20 on Hard and 30 on Expert.
-
-The Expert tier also treats every tile next to the hunter as almost forbidden
-while it still has room to dodge, which is what makes it double back and take
-the long way around.
+  rounds on Easy, 14 on Normal, 20 on Hard and 30 on Expert.
+- The Expert tier treats every tile next to any hunter as almost forbidden
+  while it still has room to dodge.
 
 ## Map generation
 
-Both builds use the same generator:
+The browser build uses the settings above; the Godot build uses 40% walls.
 
 1. Fill the board and keep a solid border.
-2. Scatter walls over 40% of the interior, then join every isolated pocket to
-   the main region by carving a 4-neighbour tunnel. The result is a dense maze
-   that is always solvable for the same movement rules the actors use.
-3. Reject the layout unless at least 85 cells are open and connected (up to
-   60 attempts).
-4. Place the hunter at random, then an exit at least 6 Manhattan steps away.
-5. Place the fugitive at least 8 steps from the hunter and 8 from the exit,
-   on a tile with two or more ways out. The strict pass also starts the hunter
-   nearer the exit than the fugitive, so cutting the fugitive off is a real
-   plan rather than a hopeless race. Spacing relaxes if the map is cramped.
-
-If random generation somehow failed every attempt, the deterministic MVP
-layout from the design (`FALLBACK_LAYOUT`) is used instead.
+2. Scatter walls over the requested percentage of the interior, then join every
+   isolated pocket to the main region by carving a 4-neighbour tunnel. The
+   result is a dense maze that is always solvable for the actors' movement
+   rules.
+3. Reject the layout unless enough cells are open and all floor tiles are
+   connected (up to 80 attempts).
+4. Place the exit at random. Place the hunters and fugitives on distinct floor
+   tiles so that fugitives start at least 6 steps from every hunter and from
+   the exit, no hunter starts within 2 steps of the exit, and at least one
+   hunter starts closer to the exit than every fugitive. These gaps relax if
+   the map is cramped.
+5. If generation somehow fails, an open fallback arena is used.
 
 ## Project structure
 
@@ -138,35 +174,16 @@ The browser build keeps the same separation inside `index.html`:
 
 - **Grid** — tile types, exits, bounds and neighbour queries.
 - **Pathfinding** — stateless A* routes and BFS distance fields.
-- **MapGenerator** — connected random walls, then spawn and exit placement.
-- **FugitiveAI** — returns one destination tile per turn; never mutates state.
-- **Game** — turn order, capture/exit checks, turn counter, difficulty.
-- **UI section** — keyboard/pointer input, canvas drawing, HUD and the modal.
+- **MapGenerator** — connected random walls, then actor and exit placement.
+- **FugitiveAI** — returns one destination tile per fugitive per round;
+  considers every hunter and the other fugitives as blocked.
+- **Game** — round/phase state, hunter selection, captures, escapes, tallies.
+- **UI section** — setup controls, keyboard/pointer input, canvas drawing, HUD
+  and the result modal.
 
-The Godot build mirrors this with nodes:
-
-- **GameManager** owns `PLAYER_TURN`, `FUGITIVE_TURN`, `GAME_OVER` and the
-  turn counter, and resolves the rules after each step.
-- **PlayerController** turns key events into `move_requested` and validates a
-  single step.
-- **GridManager** is the level and has no idea the game exists.
-- **PathfindingSystem** takes blocked tiles as an argument, which is how the
-  AI models the hunter's body.
-- **BoardView** draws `GridManager` state and interpolates actor positions.
-- **GameHUD** writes labels and emits button signals; `GameManager` decides
-  what they mean.
-
-## Extending it
-
-- **Bigger maps**: change `COLS`/`ROWS` and the `Grid` size in `index.html`;
-  in Godot change `GRID_SIZE` in `game_manager.gd`.
-- **More exits**: add `E` glyphs in a preset layout, or call the grid's
-  `setTile`/`set_tile` with `EXIT`. All AI tiers and the BFS field already
-  handle multiple exits.
-- **More AI tiers**: add a case in `FugitiveAI.chooseMove()` (JS) and/or
-  `FugitiveAI.choose_move()` (GDScript), plus names and hints.
-- **Preset levels**: both grids accept ASCII layouts (`#` wall, `.` floor,
-  `E` exit, `H` hunter, `F` fugitive) and return the spawns.
+The Godot build mirrors this with nodes; **GameManager** owns the turn state,
+**PlayerController** validates one step, **BoardView** draws, and **GameHUD**
+owns the labels and modal.
 
 ## Tests
 
@@ -176,14 +193,13 @@ Browser build (Node 18+, no packages):
 node tests/web_smoke_test.js
 ```
 
+The browser suite checks layout parsing, A* and BFS behaviour, 180 generated
+maps across wall densities and actor counts, every AI tier's move legality,
+capture/escape/rest rules, and 48 scripted battles.
+
 Godot build:
 
 ```bash
 godot --headless --path . --editor --quit   # first import (builds the class cache)
 godot --headless --path . --script res://tests/smoke_test.gd
 ```
-
-The suites check layout parsing, A* and BFS behaviour, generated maps (spawns,
-reachable exit, solvability), every AI tier's move legality, and the capture /
-exit end conditions. The browser suite also plays scripted battles to make
-sure no AI gets stuck.
