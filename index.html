@@ -430,6 +430,17 @@
     color: var(--win);
   }
 
+  .eyebrow {
+    margin: 0 0 6px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    color: var(--win);
+  }
+
+  .eyebrow.lose { color: var(--lose); }
+
   .card.lose h2 { color: var(--lose); }
 
   .card p {
@@ -537,6 +548,17 @@
       </summary>
       <div class="setup-body">
         <div class="field">
+          <span>Play as</span>
+          <div class="select compact">
+            <label class="sr-only" for="side">Side</label>
+            <select id="side" title="Which side you control">
+              <option value="hunters" selected>Hunters</option>
+              <option value="fugitives">Fugitives</option>
+            </select>
+            <span class="chev" aria-hidden="true"></span>
+          </div>
+        </div>
+        <div class="field">
           <span>Hunters</span>
           <div class="select compact">
             <label class="sr-only" for="hunters">Number of hunters</label>
@@ -566,7 +588,7 @@
         </div>
         <div class="field walls-field">
           <span>Walls <output id="walls-value" for="walls">40%</output></span>
-          <input id="walls" type="range" min="20" max="60" step="5" value="40" title="Wall coverage">
+          <input id="walls" type="range" min="0" max="60" step="5" value="40" title="Wall coverage">
         </div>
         <button id="apply" type="button" title="Start a hunt with these settings">New hunt</button>
         <p class="setup-hint">Changes apply to the next hunt.</p>
@@ -575,7 +597,7 @@
 
     <main class="board-wrap">
       <div class="board-frame">
-        <canvas id="board" role="img" aria-label="Game board. Move the selected hunter with the arrow keys or WASD."></canvas>
+        <canvas id="board" role="img" aria-label="Game board. Move the active unit with the arrow keys or WASD."></canvas>
       </div>
     </main>
 
@@ -599,6 +621,7 @@
 
   <div class="overlay" id="overlay" aria-hidden="true">
     <div class="card" id="result-card" role="dialog" aria-modal="true" aria-labelledby="result-title" aria-describedby="result-message">
+      <p class="eyebrow" id="result-eyebrow">YOU WIN</p>
       <h2 id="result-title">CAUGHT</h2>
       <p id="result-message">You caught every fugitive.</p>
       <button id="again" class="primary" type="button">Play Again</button>
@@ -620,13 +643,13 @@
   const DIRS = [[0, -1], [1, 0], [0, 1], [-1, 0]]; // up, right, down, left
   const AI = { EASY: 0, NORMAL: 1, HARD: 2, EXPERT: 3 };
   const DIFFICULTY = [
-    { name: 'Easy', hint: 'Walks in random directions.' },
-    { name: 'Normal', hint: 'Runs straight for the nearest exit.' },
-    { name: 'Hard', hint: 'Keeps clear of the hunters.' },
-    { name: 'Expert', hint: 'Reads the hunters three moves ahead.' }
+    { name: 'Easy', hint: 'Fugitives wander randomly.', hunterHint: 'Hunters wander randomly.' },
+    { name: 'Normal', hint: 'Fugitives run for the nearest exit.', hunterHint: 'Hunters chase the nearest fugitive.' },
+    { name: 'Hard', hint: 'Fugitives dodge the hunters.', hunterHint: 'Hunters cut off the exit route.' },
+    { name: 'Expert', hint: 'Fugitives plan three moves ahead.', hunterHint: 'Hunters cut off the exit route and chase hard.' }
   ];
 
-  // Rounds until the fugitives stop dodging and commit to the exit.
+  // Rounds until the AI side stops dodging and commits (fugitive AI only).
   const URGENCY_TURNS = [8, 14, 20, 30];
   const MAX_ACTORS = 5;
 
@@ -670,25 +693,15 @@
       }
     }
 
-    inBounds(x, y) {
-      return x >= 0 && y >= 0 && x < this.w && y < this.h;
-    }
-
-    isInterior(x, y) {
-      return x > 0 && y > 0 && x < this.w - 1 && y < this.h - 1;
-    }
-
-    tile(x, y) {
-      return this.inBounds(x, y) ? this.tiles[y][x] : TILE.WALL;
-    }
+    inBounds(x, y) { return x >= 0 && y >= 0 && x < this.w && y < this.h; }
+    isInterior(x, y) { return x > 0 && y > 0 && x < this.w - 1 && y < this.h - 1; }
+    tile(x, y) { return this.inBounds(x, y) ? this.tiles[y][x] : TILE.WALL; }
 
     setTile(x, y, tile) {
       if (!this.inBounds(x, y)) return;
       this.tiles[y][x] = tile;
       if (tile === TILE.EXIT) {
-        if (!this.exits.some((cell) => cell.x === x && cell.y === y)) {
-          this.exits.push({ x, y });
-        }
+        if (!this.exits.some((cell) => cell.x === x && cell.y === y)) this.exits.push({ x, y });
       } else {
         this.exits = this.exits.filter((cell) => !(cell.x === x && cell.y === y));
       }
@@ -746,7 +759,6 @@
   }
 
   class Pathfinding {
-    /** A* route from start (exclusive) to goal (inclusive); [] if unreachable. */
     static findPath(grid, start, goal, blocked = []) {
       if (same(start, goal)) return [];
       const blockedSet = new Set();
@@ -791,7 +803,6 @@
       return [];
     }
 
-    /** BFS flood fill; returns Map<cellId, steps> from the closest origin. */
     static distanceField(grid, origins, blocked = []) {
       const blockedSet = new Set();
       for (const cell of blocked) blockedSet.add(idOf(grid, cell));
@@ -847,7 +858,7 @@
     static get MIN_GAP() { return 6; }
 
     static generate(grid, rng, settings) {
-      const density = clamp(settings.walls / 100, 0.2, 0.6);
+      const density = clamp(settings.walls / 100, 0, 0.6);
       for (let attempt = 0; attempt < MapGenerator.MAX_ATTEMPTS; attempt++) {
         MapGenerator._carve(grid, rng, density);
         if (!MapGenerator._isPlayable(grid, settings)) continue;
@@ -865,7 +876,6 @@
       MapGenerator._connect(grid);
     }
 
-    /** Join every disconnected pocket with a 4-neighbour tunnel. */
     static _connect(grid) {
       for (let pass = 0; pass < 500; pass++) {
         const open = grid.walkableCells();
@@ -950,8 +960,6 @@
       grid.setTile(exitCell.x, exitCell.y, TILE.EXIT);
       const pool = open.filter((cell) => !same(cell, exitCell));
 
-      // Try to keep the fugitives away from the hunters and the exit; relax the
-      // gap if the chosen wall density leaves little room.
       for (let gap = MapGenerator.MIN_GAP; gap >= 0; gap -= 2) {
         for (let attempt = 0; attempt < 300; attempt++) {
           const shuffled = MapGenerator._shuffled(pool, rng);
@@ -970,13 +978,9 @@
     }
 
     static _spaced(fugitives, cops, exitCell, gap) {
-      // Don't let a hunter start on the exit's doorstep: it would turn every
-      // hunt into a camping exercise.
       for (const cop of cops) {
         if (manhattan(cop, exitCell) < 2) return false;
       }
-      // At least one hunter should be nearer the exit than every fugitive, so
-      // cutting the escape off is a real plan rather than a hopeless race.
       let closestCop = Infinity;
       for (const cop of cops) closestCop = Math.min(closestCop, manhattan(cop, exitCell));
 
@@ -1070,9 +1074,7 @@
       if (this.recent.length > 4) this.recent.shift();
     }
 
-    _wasRecent(cell) {
-      return this.recent.some((past) => same(past, cell));
-    }
+    _wasRecent(cell) { return this.recent.some((past) => same(past, cell)); }
 
     _randomMove(options) {
       return options[Math.floor(this.random() * options.length)];
@@ -1126,7 +1128,6 @@
 
     _scoreExpertCell(grid, cell, exitField, cops, urgency) {
       if (grid.isExit(cell.x, cell.y)) return 10000;
-
       const route = this._nearestExitPath(grid, cell, cops);
       if (route.length === 0) return -10000;
       const distance = route.length;
@@ -1215,17 +1216,67 @@
     }
   }
 
+  class HunterAI {
+    constructor(difficulty = AI.NORMAL) {
+      this.difficulty = difficulty;
+      this.random = Math.random;
+    }
+
+    chooseMove(grid, hunter, fugitives, cops) {
+      const targets = fugitives.filter((fugitive) => fugitive.status === 'active');
+      if (targets.length === 0) return hunter;
+      const blocked = cops.filter((cop) => cop !== hunter);
+
+      if (this.difficulty === AI.EASY) {
+        const options = [];
+        for (const [dx, dy] of DIRS) {
+          const cell = { x: hunter.x + dx, y: hunter.y + dy };
+          if (!grid.isWalkable(cell.x, cell.y)) continue;
+          if (blocked.some((cop) => same(cop, cell))) continue;
+          options.push(cell);
+        }
+        if (options.length === 0) return hunter;
+        return options[Math.floor(this.random() * options.length)];
+      }
+
+      let target = targets
+        .slice()
+        .sort((a, b) => manhattan(a, hunter) - manhattan(b, hunter))[0];
+
+      // Hard and Expert try to reach a point on the fugitive's exit route
+      // before the fugitive gets there.
+      if (this.difficulty >= AI.HARD) {
+        const route = Pathfinding.findPath(grid, target, grid.exits[0]);
+        const distances = Pathfinding.distanceField(grid, [hunter], blocked);
+        for (let i = 0; i < route.length; i++) {
+          const distance = distances.get(idOf(grid, route[i]));
+          if (distance !== undefined && distance <= i + 1) {
+            target = route[i];
+            break;
+          }
+        }
+      }
+
+      const path = Pathfinding.findPath(grid, hunter, target, blocked);
+      return path.length > 0 ? path[0] : hunter;
+    }
+  }
+
   class Game {
     constructor(rng, settings) {
       this.rng = rng;
       this.settings = { ...settings };
-      this.aiList = [];
+      this.playerSide = settings.side === 'fugitives' ? 'fugitives' : 'hunters';
       this.grid = null;
       this.cops = [];
       this.fugitives = [];
+      this.aiList = [];
+      this.hunterAI = new HunterAI(settings.difficulty);
+      this.hunterAI.random = rng;
       this.round = 1;
-      this.phase = 'cops';
-      this.selectedCopId = null;
+      this.activeHunterIndex = 0;
+      this.phase = 'hunters';
+      this.selectedFugitiveId = null;
       this.caught = 0;
       this.escaped = 0;
       this.outcome = null;
@@ -1233,89 +1284,110 @@
 
     newGame(settings = this.settings) {
       this.settings = { ...settings };
+      this.playerSide = settings.side === 'fugitives' ? 'fugitives' : 'hunters';
       this.grid = new Grid();
       const spawns = MapGenerator.generate(this.grid, this.rng, this.settings);
       this.cops = spawns.cops.map((cell, index) => ({ id: `c${index}`, x: cell.x, y: cell.y }));
-      this.fugitives = spawns.fugitives.map((cell, index) => ({ id: `f${index}`, x: cell.x, y: cell.y, status: 'active', movedThisPhase: false }));
+      this.fugitives = spawns.fugitives.map((cell, index) => ({
+        id: `f${index}`, x: cell.x, y: cell.y, status: 'active', movedThisPhase: false
+      }));
       this.aiList = this.fugitives.map(() => {
         const ai = new FugitiveAI(this.settings.difficulty);
         ai.random = this.rng;
         return ai;
       });
+      this.hunterAI.difficulty = this.settings.difficulty;
+      this.hunterAI.random = this.rng;
       this.round = 1;
+      this.activeHunterIndex = 0;
+      this.selectedFugitiveId = null;
       this.caught = 0;
       this.escaped = 0;
       this.outcome = null;
-      this.phase = 'cops';
-      this.selectedCopId = null;
-      this.beginRound();
+      this.phase = 'hunters';
       return this;
     }
 
     get totalFugitives() { return this.fugitives.length; }
 
+    get playerWon() {
+      if (!this.outcome) return null;
+      return (this.playerSide === 'hunters') === (this.outcome === 'hunters');
+    }
+
     activeFugitives() {
       return this.fugitives.filter((fugitive) => fugitive.status === 'active');
     }
 
-    copById(id) {
-      return this.cops.find((cop) => cop.id === id) || null;
+    activeHunter() {
+      return this.cops[this.activeHunterIndex % this.cops.length];
     }
 
-    copAt(x, y) {
-      return this.cops.find((cop) => cop.x === x && cop.y === y) || null;
-    }
+    copById(id) { return this.cops.find((cop) => cop.id === id) || null; }
+    copAt(x, y) { return this.cops.find((cop) => cop.x === x && cop.y === y) || null; }
+    fugitiveById(id) { return this.fugitives.find((fugitive) => fugitive.id === id) || null; }
 
     fugitiveAt(x, y) {
       return this.activeFugitives().find((fugitive) => fugitive.x === x && fugitive.y === y) || null;
     }
 
-    copTargets(cop) {
+    hunterTargets(hunter = this.activeHunter()) {
       const targets = [];
       for (const [dx, dy] of DIRS) {
-        const x = cop.x + dx;
-        const y = cop.y + dy;
+        const x = hunter.x + dx;
+        const y = hunter.y + dy;
         if (!this.grid.isWalkable(x, y)) continue;
-        if (this.cops.some((other) => other !== cop && other.x === x && other.y === y)) continue;
+        if (this.cops.some((other) => other !== hunter && other.x === x && other.y === y)) continue;
         targets.push({ x, y });
       }
       return targets;
     }
 
-    canCopMove(cop) {
-      return this.copTargets(cop).length > 0;
+    canActiveHunterMove() {
+      return this.hunterTargets().length > 0;
     }
 
-    beginRound() {
-      this.phase = 'cops';
-      const previous = this.copById(this.selectedCopId);
-      const next = previous && this.canCopMove(previous)
-        ? previous
-        : this.cops.find((cop) => this.canCopMove(cop)) || null;
-      this.selectedCopId = next ? next.id : null;
-      if (!this.selectedCopId) this.beginFugitivePhase();
+    fugitiveTargets(fugitive) {
+      const targets = [];
+      for (const [dx, dy] of DIRS) {
+        const x = fugitive.x + dx;
+        const y = fugitive.y + dy;
+        if (!this.grid.isWalkable(x, y)) continue;
+        if (this.cops.some((cop) => cop.x === x && cop.y === y)) continue;
+        if (this.activeFugitives().some((other) => other !== fugitive && other.x === x && other.y === y)) continue;
+        targets.push({ x, y });
+      }
+      return targets;
     }
 
-    selectCop(id) {
-      if (this.phase !== 'cops') return false;
-      const cop = this.copById(id);
-      if (!cop || !this.canCopMove(cop)) return false;
-      this.selectedCopId = id;
-      return true;
+    canFugitiveMove(fugitive) {
+      return this.fugitiveTargets(fugitive).length > 0;
     }
 
-    moveSelected(dx, dy) {
-      if (this.phase !== 'cops') return { kind: 'ignored' };
-      const cop = this.copById(this.selectedCopId);
-      if (!cop) return { kind: 'ignored' };
+    advanceHunter() {
+      this.activeHunterIndex = (this.activeHunterIndex + 1) % this.cops.length;
+    }
 
-      const target = { x: cop.x + dx, y: cop.y + dy };
+    beginHunterPhase() {
+      this.phase = 'hunters';
+    }
+
+    skipHunterTurn() {
+      if (this.phase !== 'hunters') return;
+      this.advanceHunter();
+      this.beginFugitivePhase();
+    }
+
+    moveActiveHunter(dx, dy) {
+      if (this.phase !== 'hunters') return { kind: 'ignored' };
+      const hunter = this.activeHunter();
+      const target = { x: hunter.x + dx, y: hunter.y + dy };
       if (!this.grid.isWalkable(target.x, target.y)) return { kind: 'blocked' };
-      if (this.cops.some((other) => other !== cop && same(other, target))) return { kind: 'blocked' };
+      if (this.cops.some((other) => other !== hunter && same(other, target))) return { kind: 'blocked' };
 
       const victim = this.fugitiveAt(target.x, target.y);
-      cop.x = target.x;
-      cop.y = target.y;
+      hunter.x = target.x;
+      hunter.y = target.y;
 
       if (victim) {
         victim.status = 'caught';
@@ -1327,7 +1399,37 @@
         return { kind: victim ? 'capture' : 'moved', captured: Boolean(victim), gameOver: true };
       }
 
-      // One hunter moves per round; the fugitives answer immediately.
+      this.advanceHunter();
+      this.beginFugitivePhase();
+      return { kind: victim ? 'capture' : 'moved', captured: Boolean(victim) };
+    }
+
+    aiHunterStep() {
+      if (this.phase !== 'hunters') return { kind: 'ignored' };
+      const hunter = this.activeHunter();
+      if (!this.canActiveHunterMove()) {
+        this.advanceHunter();
+        this.beginFugitivePhase();
+        return { kind: 'skipped' };
+      }
+
+      const next = this.hunterAI.chooseMove(this.grid, hunter, this.activeFugitives(), this.cops);
+      const target = next || hunter;
+      const victim = this.fugitiveAt(target.x, target.y);
+      hunter.x = target.x;
+      hunter.y = target.y;
+
+      if (victim) {
+        victim.status = 'caught';
+        this.caught += 1;
+      }
+
+      if (this.activeFugitives().length === 0) {
+        this.finish();
+        return { kind: victim ? 'capture' : 'moved', captured: Boolean(victim), gameOver: true };
+      }
+
+      this.advanceHunter();
       this.beginFugitivePhase();
       return { kind: victim ? 'capture' : 'moved', captured: Boolean(victim) };
     }
@@ -1335,20 +1437,55 @@
     beginFugitivePhase() {
       if (this.phase === 'over') return;
       this.phase = 'fugitives';
-      for (const fugitive of this.fugitives) fugitive.movedThisPhase = false;
+      for (const fugitive of this.fugitives) {
+        fugitive.movedThisPhase = fugitive.status !== 'active' || !this.canFugitiveMove(fugitive);
+      }
+      const next = this.nextPlayerFugitive();
+      this.selectedFugitiveId = next ? next.id : null;
     }
 
-    nextFugitive() {
+    nextPlayerFugitive() {
       return this.activeFugitives().find((fugitive) => !fugitive.movedThisPhase) || null;
     }
 
+    selectFugitive(id) {
+      if (this.phase !== 'fugitives' || this.playerSide !== 'fugitives') return false;
+      const fugitive = this.fugitiveById(id);
+      if (!fugitive || fugitive.status !== 'active' || fugitive.movedThisPhase) return false;
+      this.selectedFugitiveId = id;
+      return true;
+    }
+
+    moveSelectedFugitive(dx, dy) {
+      if (this.phase !== 'fugitives' || this.playerSide !== 'fugitives') return { kind: 'ignored' };
+      const fugitive = this.fugitiveById(this.selectedFugitiveId);
+      if (!fugitive) return { kind: 'ignored' };
+
+      const target = { x: fugitive.x + dx, y: fugitive.y + dy };
+      if (!this.fugitiveTargets(fugitive).some((cell) => same(cell, target))) return { kind: 'blocked' };
+
+      fugitive.x = target.x;
+      fugitive.y = target.y;
+      fugitive.movedThisPhase = true;
+
+      if (this.grid.isExit(fugitive.x, fugitive.y)) {
+        fugitive.status = 'escaped';
+        this.escaped += 1;
+        this.finish();
+        return { kind: 'escaped', gameOver: true };
+      }
+
+      const next = this.nextPlayerFugitive();
+      this.selectedFugitiveId = next ? next.id : null;
+      return { kind: 'moved' };
+    }
+
     stepFugitive() {
-      if (this.phase !== 'fugitives') return null;
-      const fugitive = this.nextFugitive();
+      if (this.phase !== 'fugitives' || this.playerSide === 'fugitives') return null;
+      const fugitive = this.activeFugitives().find((candidate) => !candidate.movedThisPhase);
       if (!fugitive) return null;
 
-      const index = this.fugitives.indexOf(fugitive);
-      const ai = this.aiList[index];
+      const ai = this.aiList[this.fugitives.indexOf(fugitive)];
       const others = this.activeFugitives().filter((other) => other !== fugitive);
       const next = ai.chooseMove(this.grid, this.cops, fugitive, others, this.round);
 
@@ -1360,8 +1497,8 @@
       if (this.grid.isExit(fugitive.x, fugitive.y)) {
         fugitive.status = 'escaped';
         this.escaped += 1;
-        if (this.activeFugitives().length === 0) this.finish();
-        return { kind: 'escaped', fugitive };
+        this.finish();
+        return { kind: 'escaped', fugitive, gameOver: true };
       }
       return { kind: 'moved', fugitive };
     }
@@ -1373,18 +1510,19 @@
         return true;
       }
       this.round += 1;
-      this.beginRound();
-      return this.phase === 'over';
+      this.beginHunterPhase();
+      return false;
     }
 
     finish() {
       this.phase = 'over';
-      this.outcome = this.escaped === 0 ? 'cops' : 'fugitives';
+      this.outcome = this.escaped > 0 ? 'fugitives' : 'hunters';
     }
 
     setDifficulty(difficulty) {
       this.settings.difficulty = difficulty;
       for (const ai of this.aiList) ai.difficulty = difficulty;
+      this.hunterAI.difficulty = difficulty;
     }
   }
 
@@ -1409,8 +1547,8 @@
   };
 
   const FONT = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
-  const SETTINGS_KEY = 'escape-hunter-settings-v3';
-  const DEFAULT_SETTINGS = { hunters: 1, fugitives: 1, walls: 40, difficulty: 1 };
+  const SETTINGS_KEY = 'escape-hunter-settings-v4';
+  const DEFAULT_SETTINGS = { side: 'hunters', hunters: 1, fugitives: 1, walls: 40, difficulty: 1 };
 
   function shade(hex, factor) {
     const value = parseInt(hex.slice(1), 16);
@@ -1425,6 +1563,7 @@
       canvas: document.getElementById('board'),
       turn: document.getElementById('turn'),
       difficulty: document.getElementById('difficulty'),
+      side: document.getElementById('side'),
       hunters: document.getElementById('hunters'),
       fugitives: document.getElementById('fugitives'),
       walls: document.getElementById('walls'),
@@ -1437,6 +1576,7 @@
       tally: document.getElementById('tally'),
       overlay: document.getElementById('overlay'),
       card: document.getElementById('result-card'),
+      eyebrow: document.getElementById('result-eyebrow'),
       resultTitle: document.getElementById('result-title'),
       resultMessage: document.getElementById('result-message'),
       again: document.getElementById('again')
@@ -1461,7 +1601,6 @@
 
     let game = null;
     let token = 0;
-    let running = false;
     let phaseTimer = null;
     let lastRound = 1;
     let dragStart = null;
@@ -1473,14 +1612,16 @@
 
     function readSettings() {
       return {
+        side: els.side.value === 'fugitives' ? 'fugitives' : 'hunters',
         hunters: clamp(Number(els.hunters.value) || 1, 1, MAX_ACTORS),
         fugitives: clamp(Number(els.fugitives.value) || 1, 1, MAX_ACTORS),
-        walls: clamp(Number(els.walls.value) || 40, 20, 60),
+        walls: clamp(Number(els.walls.value) || 0, 0, 60),
         difficulty: clamp(Number(els.difficulty.value) || 0, 0, 3)
       };
     }
 
     function applySettingsToControls(settings) {
+      els.side.value = settings.side;
       els.hunters.value = String(settings.hunters);
       els.fugitives.value = String(settings.fugitives);
       els.walls.value = String(settings.walls);
@@ -1491,9 +1632,7 @@
     function updateSetupSummary() {
       const current = readSettings();
       els.setupSummary.textContent =
-        `${current.hunters} hunter${current.hunters === 1 ? '' : 's'} \u00b7 ` +
-        `${current.fugitives} fugitive${current.fugitives === 1 ? '' : 's'} \u00b7 ` +
-        `${current.walls}% walls`;
+        `${current.hunters} vs ${current.fugitives} \u00b7 ${current.walls}% walls \u00b7 you: ${current.side}`;
     }
 
     function loadSettings() {
@@ -1501,9 +1640,10 @@
         const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || 'null');
         if (saved && typeof saved === 'object') {
           return {
+            side: saved.side === 'fugitives' ? 'fugitives' : 'hunters',
             hunters: clamp(Number(saved.hunters) || 1, 1, MAX_ACTORS),
             fugitives: clamp(Number(saved.fugitives) || 1, 1, MAX_ACTORS),
-            walls: clamp(Number(saved.walls) || 40, 20, 60),
+            walls: clamp(Number(saved.walls) || 0, 0, 60),
             difficulty: clamp(Number(saved.difficulty) || 0, 0, 3)
           };
         }
@@ -1537,9 +1677,7 @@
         lastRound = game.round;
         popRound();
       }
-      const active = game.activeFugitives().length;
-      els.tally.innerHTML = `Caught <b>${game.caught}</b> / ${game.totalFugitives} &middot; Escaped <b>${game.escaped}</b>` +
-        (active > 0 && active < game.totalFugitives ? ` &middot; Left <b>${active}</b>` : '');
+      els.tally.innerHTML = `Caught <b>${game.caught}</b> / ${game.totalFugitives} &middot; Escaped <b>${game.escaped}</b>`;
     }
 
     function clearPhaseTimer() {
@@ -1551,7 +1689,6 @@
 
     function newGame() {
       token += 1;
-      running = false;
       clearPhaseTimer();
       const settings = readSettings();
       saveSettings(settings);
@@ -1568,15 +1705,12 @@
       els.overlay.classList.remove('open');
       els.overlay.setAttribute('aria-hidden', 'true');
       els.card.classList.remove('lose');
+      els.eyebrow.classList.remove('lose');
       els.turn.textContent = '1';
       updateHud();
       syncVisuals(true);
       resizeCanvas();
-      if (game.phase === 'fugitives') {
-        startFugitivePhase();
-      } else {
-        updateCopMessage();
-      }
+      startPhase();
     }
 
     function restart() {
@@ -1613,47 +1747,110 @@
       }
     }
 
-    function updateCopMessage() {
-      if (!game || game.phase !== 'cops') return;
-      const hunters = game.cops.length === 1 ? 'the hunter' : 'one hunter';
-      const runners = game.totalFugitives === 1 ? 'the fugitive runs' : 'the fugitives run';
-      setStatus(`Move ${hunters}, then ${runners}.`);
+    function hunterLabel() {
+      return `Hunter ${game.activeHunterIndex + 1} of ${game.cops.length}`;
     }
 
-    function startFugitivePhase() {
-      if (!game || running || game.phase !== 'fugitives') return;
-      running = true;
-      const myToken = ++token;
-      clearPhaseTimer();
+    function fugitiveLabel(fugitive) {
+      return `Fugitive ${game.fugitives.indexOf(fugitive) + 1} of ${game.totalFugitives}`;
+    }
 
+    function updateTurnMessage() {
+      if (!game) return;
+      if (game.phase === 'hunters') {
+        if (game.playerSide === 'hunters') setStatus(`${hunterLabel()} - move one tile.`);
+        else setStatus('The hunters are moving...');
+        return;
+      }
+      if (game.phase === 'fugitives') {
+        if (game.playerSide === 'fugitives') {
+          const fugitive = game.fugitiveById(game.selectedFugitiveId);
+          setStatus(fugitive ? `${fugitiveLabel(fugitive)} - move it.` : 'Move your fugitives.');
+        } else {
+          setStatus(plural('The fugitive is on the move...', 'The fugitives are on the move...'));
+        }
+      }
+    }
+
+    function startPhase() {
+      if (!game) return;
+      if (game.phase === 'over') {
+        scheduleResult();
+        return;
+      }
+      if (game.phase === 'hunters') {
+        if (game.playerSide === 'hunters') {
+          if (!game.canActiveHunterMove()) skipActiveHunter();
+          else updateTurnMessage();
+        } else {
+          runAiHunter();
+        }
+        return;
+      }
+      if (game.phase === 'fugitives') {
+        if (game.playerSide === 'fugitives') {
+          if (!game.selectedFugitiveId) finishFugitivePhase();
+          else updateTurnMessage();
+        } else {
+          runAiFugitives();
+        }
+      }
+    }
+
+    function skipActiveHunter() {
+      const label = hunterLabel();
+      const myToken = ++token;
+      setStatus(`${label} is boxed in - turn skipped.`);
+      clearPhaseTimer();
+      phaseTimer = window.setTimeout(() => {
+        if (myToken !== token) return;
+        game.skipHunterTurn();
+        syncVisuals();
+        updateHud();
+        startPhase();
+      }, 700);
+    }
+
+    function runAiHunter() {
+      const myToken = ++token;
+      setStatus('The hunters are moving...');
+      clearPhaseTimer();
+      phaseTimer = window.setTimeout(() => {
+        if (myToken !== token) return;
+        game.aiHunterStep();
+        syncVisuals();
+        updateHud();
+        if (game.phase === 'over') {
+          scheduleResult();
+          return;
+        }
+        startPhase();
+      }, 420);
+    }
+
+    function runAiFugitives() {
+      const myToken = ++token;
       setStatus(plural('The fugitive is on the move...', 'The fugitives are on the move...'));
+      clearPhaseTimer();
 
       const step = () => {
         if (myToken !== token) return;
         const result = game.stepFugitive();
         if (!result) {
-          running = false;
           const over = game.endFugitivePhase();
           updateHud();
           syncVisuals();
           if (over || game.phase === 'over') {
             scheduleResult();
-          } else if (game.phase === 'fugitives') {
-            startFugitivePhase();
-          } else {
-            updateCopMessage();
+            return;
           }
+          startPhase();
           return;
         }
 
         syncVisuals();
-        if (result.kind === 'escaped') {
-          updateHud();
-          setStatus(`A fugitive escaped! ${game.activeFugitives().length} still out there.`);
-        }
+        updateHud();
         if (game.phase === 'over') {
-          running = false;
-          updateHud();
           scheduleResult();
           return;
         }
@@ -1663,49 +1860,75 @@
       phaseTimer = window.setTimeout(step, 300);
     }
 
-    function performMove(dx, dy) {
-      if (!game || game.phase !== 'cops') return;
-      const before = game.copById(game.selectedCopId);
-      const result = game.moveSelected(dx, dy);
+    function finishFugitivePhase() {
+      const over = game.endFugitivePhase();
+      updateHud();
+      syncVisuals();
+      if (over || game.phase === 'over') {
+        scheduleResult();
+        return;
+      }
+      startPhase();
+    }
 
+    function performHunterMove(dx, dy) {
+      if (!game || game.phase !== 'hunters' || game.playerSide !== 'hunters') return;
+      const hunter = game.activeHunter();
+      const result = game.moveActiveHunter(dx, dy);
       if (result.kind === 'blocked') {
-        view.nudge = { id: before ? before.id : null, x: dx * 8, y: dy * 8 };
+        view.nudge = { id: hunter.id, x: dx * 8, y: dy * 8 };
         return;
       }
       if (result.kind === 'ignored') return;
 
       syncVisuals();
       updateHud();
-
       if (game.phase === 'over') {
         scheduleResult();
         return;
       }
-
-      if (result.captured) {
-        const left = game.activeFugitives().length;
-        if (left > 0) setStatus(`Fugitive caught! ${left} still out there.`);
-      }
-
-      if (game.phase === 'fugitives') {
-        startFugitivePhase();
-      } else {
-        updateCopMessage();
-      }
+      startPhase();
     }
 
-    function selectCop(id) {
-      if (!game || game.phase !== 'cops') return;
-      if (game.selectCop(id)) {
-        updateCopMessage();
+    function performFugitiveMove(dx, dy) {
+      if (!game || game.phase !== 'fugitives' || game.playerSide !== 'fugitives') return;
+      const fugitive = game.fugitiveById(game.selectedFugitiveId);
+      const result = game.moveSelectedFugitive(dx, dy);
+      if (result.kind === 'blocked') {
+        if (fugitive) view.nudge = { id: fugitive.id, x: dx * 8, y: dy * 8 };
+        return;
       }
+      if (result.kind === 'ignored') return;
+
+      syncVisuals();
+      updateHud();
+      if (game.phase === 'over') {
+        scheduleResult();
+        return;
+      }
+      if (!game.selectedFugitiveId) {
+        finishFugitivePhase();
+        return;
+      }
+      updateTurnMessage();
+    }
+
+    function performMove(dx, dy) {
+      if (!game) return;
+      if (game.phase === 'hunters' && game.playerSide === 'hunters') performHunterMove(dx, dy);
+      else if (game.phase === 'fugitives' && game.playerSide === 'fugitives') performFugitiveMove(dx, dy);
+    }
+
+    function selectFugitive(id) {
+      if (!game || game.playerSide !== 'fugitives') return;
+      if (game.selectFugitive(id)) updateTurnMessage();
     }
 
     function scheduleResult() {
       if (!game) return;
       const myToken = token;
       updateHud();
-      setStatus(game.outcome === 'cops' ? 'Case closed.' : 'At least one fugitive got away.');
+      setStatus(game.playerWon ? 'Hunt complete.' : 'The hunt is over.');
       clearPhaseTimer();
       phaseTimer = window.setTimeout(() => {
         if (myToken !== token) return;
@@ -1714,13 +1937,21 @@
     }
 
     function showResult() {
-      const won = game.outcome === 'cops';
+      const won = Boolean(game.playerWon);
+      els.eyebrow.textContent = won ? 'YOU WIN' : 'YOU LOSE';
+      els.eyebrow.classList.toggle('lose', !won);
       els.card.classList.toggle('lose', !won);
-      els.resultTitle.textContent = won ? 'CAUGHT' : 'ESCAPED';
+      els.resultTitle.textContent = game.outcome === 'hunters' ? 'CAUGHT' : 'ESCAPED';
+
       const rounds = `${game.round} round${game.round === 1 ? '' : 's'}`;
-      els.resultMessage.textContent = won
-        ? `All ${game.totalFugitives} fugitive${game.totalFugitives === 1 ? '' : 's'} caught in ${rounds}.`
-        : `${game.caught} of ${game.totalFugitives} caught, ${game.escaped} escaped after ${rounds}.`;
+      if (game.outcome === 'hunters') {
+        els.resultMessage.textContent =
+          `All ${game.totalFugitives} fugitive${game.totalFugitives === 1 ? '' : 's'} caught in ${rounds}.`;
+      } else {
+        els.resultMessage.textContent =
+          `A fugitive reached the exit in ${rounds} - ${game.caught} of ${game.totalFugitives} caught.`;
+      }
+
       els.overlay.classList.add('open');
       els.overlay.setAttribute('aria-hidden', 'false');
       els.again.focus({ preventScroll: true });
@@ -1754,9 +1985,9 @@
         restart();
         return;
       }
-      if (/^[1-5]$/.test(event.key) && game) {
-        const cop = game.cops[Number(event.key) - 1];
-        if (cop) selectCop(cop.id);
+      if (/^[1-5]$/.test(event.key) && game && game.playerSide === 'fugitives') {
+        const fugitive = game.fugitives[Number(event.key) - 1];
+        if (fugitive) selectFugitive(fugitive.id);
         return;
       }
       const direction = directionForKey(event);
@@ -1775,13 +2006,15 @@
 
     els.hunters.addEventListener('change', updateSetupSummary);
     els.fugitives.addEventListener('change', updateSetupSummary);
+    els.side.addEventListener('change', updateSetupSummary);
 
     els.difficulty.addEventListener('change', () => {
       if (!game) return;
       const difficulty = Number(els.difficulty.value);
       game.setDifficulty(difficulty);
       const info = DIFFICULTY[difficulty];
-      setStatus(`Difficulty ${info.name} - ${info.hint}`);
+      const hint = game.playerSide === 'hunters' ? info.hint : info.hunterHint;
+      setStatus(`${game.playerSide === 'hunters' ? 'Fugitive' : 'Hunter'} AI ${info.name} - ${hint}`);
       saveSettings(readSettings());
       els.difficulty.blur();
     });
@@ -1794,7 +2027,8 @@
     const padDirections = { up: [0, -1], right: [1, 0], down: [0, 1], left: [-1, 0] };
     document.querySelectorAll('.touchpad button').forEach((button) => {
       button.addEventListener('click', () => {
-        performMove(padDirections[button.dataset.move][0], padDirections[button.dataset.move][1]);
+        const direction = padDirections[button.dataset.move];
+        performMove(direction[0], direction[1]);
         button.blur();
       });
     });
@@ -1810,19 +2044,63 @@
       return { x, y };
     }
 
+    function controlledUnit() {
+      if (!game) return null;
+      if (game.phase === 'hunters' && game.playerSide === 'hunters') return game.activeHunter();
+      if (game.phase === 'fugitives' && game.playerSide === 'fugitives') {
+        return game.fugitiveById(game.selectedFugitiveId);
+      }
+      return null;
+    }
+
+    function focusUnit() {
+      if (!game) return null;
+      if (game.phase === 'hunters') return game.activeHunter();
+      if (game.phase === 'fugitives' && game.playerSide === 'fugitives') {
+        return game.fugitiveById(game.selectedFugitiveId);
+      }
+      return null;
+    }
+
+    function targetsFor(unit) {
+      if (!game || !unit) return [];
+      return game.cops.includes(unit) ? game.hunterTargets(unit) : game.fugitiveTargets(unit);
+    }
+
+    function unitVisual(unit) {
+      if (!unit) return null;
+      return game.cops.includes(unit)
+        ? view.copVisuals.get(unit.id)
+        : view.fugitiveVisuals.get(unit.id);
+    }
+
     function handleCell(cell) {
-      if (!game || game.phase !== 'cops') return;
-      const cop = game.copAt(cell.x, cell.y);
-      if (cop) {
-        selectCop(cop.id);
+      if (!game) return;
+      if (game.phase === 'hunters' && game.playerSide === 'hunters') {
+        const hunter = game.activeHunter();
+        if (same(hunter, cell)) {
+          setStatus(`${hunterLabel()} moves this round - hunters take turns.`);
+          return;
+        }
+        const dx = cell.x - hunter.x;
+        const dy = cell.y - hunter.y;
+        if (Math.abs(dx) + Math.abs(dy) !== 1) return;
+        performHunterMove(dx, dy);
         return;
       }
-      const selected = game.copById(game.selectedCopId);
-      if (!selected) return;
-      const dx = cell.x - selected.x;
-      const dy = cell.y - selected.y;
-      if (Math.abs(dx) + Math.abs(dy) !== 1) return;
-      performMove(dx, dy);
+      if (game.phase === 'fugitives' && game.playerSide === 'fugitives') {
+        const fugitive = game.fugitiveAt(cell.x, cell.y);
+        if (fugitive) {
+          selectFugitive(fugitive.id);
+          return;
+        }
+        const selected = game.fugitiveById(game.selectedFugitiveId);
+        if (!selected) return;
+        const dx = cell.x - selected.x;
+        const dy = cell.y - selected.y;
+        if (Math.abs(dx) + Math.abs(dy) !== 1) return;
+        performFugitiveMove(dx, dy);
+      }
     }
 
     els.canvas.addEventListener('pointerdown', (event) => {
@@ -1955,14 +2233,12 @@
       if (tile === TILE.EXIT) drawExit(x + cell / 2, y + cell / 2, cell);
     }
 
-    function drawActor(position, color, letter, cell, ox, oy, alpha = 1, offsetX = 0, offsetY = 0) {
+    function drawActor(position, color, letter, cell, ox, oy, offsetX = 0, offsetY = 0) {
       const cx = ox + (position.x + 0.5) * cell + offsetX;
       const cy = oy + (position.y + 0.5) * cell + offsetY;
       const radius = cell * 0.32;
 
       ctx.save();
-      ctx.globalAlpha = alpha;
-
       ctx.beginPath();
       ctx.ellipse(cx, cy + radius * 0.14, radius * 1.02, radius * 0.98, 0, 0, TAU);
       ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
@@ -2003,8 +2279,8 @@
       ctx.stroke();
     }
 
-    function drawMoveDots(cop, cell, ox, oy) {
-      for (const target of game.copTargets(cop)) {
+    function drawMoveDots(targets, cell, ox, oy) {
+      for (const target of targets) {
         const cx = ox + (target.x + 0.5) * cell;
         const cy = oy + (target.y + 0.5) * cell;
         ctx.beginPath();
@@ -2036,14 +2312,15 @@
         for (let x = 0; x < COLS; x++) drawTile(x, y, cell, ox, oy);
       }
 
-      const selected = game.phase === 'cops' ? game.copById(game.selectedCopId) : null;
+      const controlled = controlledUnit();
+      const focus = focusUnit();
+      const targets = controlled ? targetsFor(controlled) : [];
 
-      if (selected) drawMoveDots(selected, cell, ox, oy);
+      if (controlled) drawMoveDots(targets, cell, ox, oy);
 
-      if (view.hover && game.phase === 'cops') {
-        const dx = view.hover.x - (selected ? selected.x : -9);
-        const dy = view.hover.y - (selected ? selected.y : -9);
-        if (selected && Math.abs(dx) + Math.abs(dy) === 1 && game.grid.isWalkable(view.hover.x, view.hover.y)) {
+      if (view.hover && controlled && game.phase !== 'over') {
+        const legal = targets.some((cellTarget) => same(cellTarget, view.hover));
+        if (legal) {
           const margin = Math.max(2, cell * 0.03);
           strokeRound(
             ox + view.hover.x * cell + margin,
@@ -2060,24 +2337,28 @@
       for (const fugitive of game.fugitives) {
         if (fugitive.status !== 'active') continue;
         const visual = view.fugitiveVisuals.get(fugitive.id);
-        if (visual) drawActor(visual, COLORS.fugitive, 'F', cell, ox, oy);
+        if (!visual) continue;
+        const nudged = view.nudge.id === fugitive.id;
+        drawActor(visual, COLORS.fugitive, 'F', cell, ox, oy,
+          nudged ? view.nudge.x : 0,
+          nudged ? view.nudge.y : 0);
       }
 
       for (const cop of game.cops) {
         const visual = view.copVisuals.get(cop.id);
         if (!visual) continue;
         const nudged = view.nudge.id === cop.id;
-        drawActor(
-          visual, COLORS.hunter, 'H', cell, ox, oy, 1,
+        drawActor(visual, COLORS.hunter, 'H', cell, ox, oy,
           nudged ? view.nudge.x : 0,
-          nudged ? view.nudge.y : 0
-        );
+          nudged ? view.nudge.y : 0);
       }
 
-      if (selected) {
-        const pulse = 0.5 + 0.5 * Math.sin(view.time * 3.2);
-        const visual = view.copVisuals.get(selected.id);
-        if (visual) drawSelection(visual, cell, ox, oy, pulse);
+      if (focus) {
+        const visual = unitVisual(focus);
+        if (visual) {
+          const pulse = 0.5 + 0.5 * Math.sin(view.time * 3.2);
+          drawSelection(visual, cell, ox, oy, pulse);
+        }
       }
     }
 
@@ -2134,13 +2415,14 @@
       input: performMove,
       restart,
       newGame,
-      settings: readSettings
+      settings: readSettings,
+      selectFugitive
     };
   }
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
-      Grid, Pathfinding, MapGenerator, FugitiveAI, Game,
+      Grid, Pathfinding, MapGenerator, FugitiveAI, HunterAI, Game,
       AI, TILE, DIRS, same, manhattan, chebyshev, makeRng, COLS, ROWS, MAX_ACTORS
     };
   } else if (typeof document !== 'undefined') {
@@ -2151,6 +2433,7 @@
     }
   }
 })();
+
 </script>
 </body>
 </html>
