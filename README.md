@@ -8,9 +8,9 @@ A turn-based pursuit game in two forms:
   hunt.
 
 The board is **15 × 15**, and in the browser build you choose **1–5 hunters**,
-**1–5 fugitives** and **20–60% walls** before each hunt. Random mazes are
-always connected, and the fugitives get tired, so every hunt ends in a capture
-or a clean escape instead of an endless draw.
+**1–5 fugitives** and **20–60% walls** before each hunt. Each round you move
+**one** hunter, then every fugitive answers. Random mazes are always connected,
+so the chase is decided by positioning, not by a sealed-off spawn.
 
 ![Escape Hunter in the browser](docs/screenshot-web.png)
 
@@ -24,7 +24,7 @@ game is inline HTML, CSS and JavaScript.
 
 | Setting | Range | Effect |
 | --- | --- | --- |
-| **Hunters** | 1–5 | How many hunters you control. Each one moves once per round. |
+| **Hunters** | 1–5 | How many hunters you control. You move one hunter per round. |
 | **Fugitives** | 1–5 | How many AI fugitives are on the board. |
 | **Walls** | 20–60% | How much of the interior is wall. Higher values make tighter mazes. |
 | **Difficulty** | Easy–Expert | How clever the fugitive AI is. |
@@ -47,17 +47,15 @@ URL makes the map reproducible.
 | Difficulty dropdown | Switch AI tier immediately |
 
 The selected hunter has a cyan ring, and small blue dots mark its legal steps.
-After a hunter moves, the next hunter that still has to move is selected
-automatically.
+When it moves, the round ends and the fugitives answer. The same hunter stays
+selected next round unless it is blocked, in which case another one is picked.
 
 ## How a round works
 
-1. You move **each hunter once** (one tile per hunter). Hunters cannot stand on
-   each other.
+1. You move **one hunter** one tile. Hunters cannot stand on each other.
 2. Every active fugitive then moves one tile. Fugitives cannot step onto a
    hunter or onto each other.
-3. Every fifth round the fugitives are exhausted and lose that move.
-4. Stepping onto a fugitive captures it. A fugitive that reaches the exit
+3. Stepping onto a fugitive captures it. A fugitive that reaches the exit
    escapes.
 
 The hunt ends when every fugitive has been caught or has escaped:
@@ -70,21 +68,22 @@ The hunt ends when every fugitive has been caught or has escaped:
 The footer tally updates live: caught / total, escaped, and how many are still
 out there.
 
-Rule 3 is the anti-draw rule. At equal speed a perfect evader can circle a loop
-forever, so the fugitives have to hand the hunters a free step every five
-rounds. That makes a capture reachable without turning the chase into a
-walkover.
+There is no fatigue rule. At equal speed a perfect evader can keep circling, so
+a hunt can run long: hunters win by cutting off the exit and using dead ends.
+If a chase stalls, **New hunt** (or **R**) starts a fresh map.
 
 ## Tuning the odds
 
 Some starting points:
 
-- **1 hunter vs 1 fugitive, 40%** — the original tight duel.
-- **2 vs 2, 40–50%** — more hunters means more coordination, but fugitives
-  can split up; a good middle ground.
-- **1 vs 3, 30–40%** — a hard hunt: you must cut off the exit and pick them
-  off one at a time.
-- **3 vs 1, 50%** — a short, tactical sweep; try Hard or Expert for a chase.
+- **1 hunter vs 1 fugitive, 40%** — the tight duel. Cutting the exit off is
+  essential; a straight chase can go on for a long time.
+- **2 vs 1, 40–50%** — a second hunter gives you a blocking option, though the
+  extra hunter still only moves on its own round.
+- **1 vs 2, 30–40%** — hard: two fugitives answer every round, and one escape
+  loses the hunt.
+- **3 vs 2, 50%** — a tactical sweep; spread the hunters and squeeze the
+  fugitives into dead ends.
 
 More walls means more dead ends (good for hunters) but also more hiding
 routes. Fewer walls favours the fugitives.
@@ -92,8 +91,8 @@ routes. Fewer walls favours the fugitives.
 ## Godot 4 project
 
 The native build is the original 1 hunter vs 1 fugitive hunt: 15 × 15, 40%
-walls, the same rest rule and AI tiers, but no setup panel. It needs Godot
-**4.3** or newer (standard build, no C#). Import
+walls, the same AI tiers, but no setup panel and no fatigue rule. It needs
+Godot **4.3** or newer (standard build, no C#). Import
 [`project.godot`](project.godot), then press **F5**; from a terminal:
 
 ```bash
@@ -195,7 +194,9 @@ node tests/web_smoke_test.js
 
 The browser suite checks layout parsing, A* and BFS behaviour, 180 generated
 maps across wall densities and actor counts, every AI tier's move legality,
-capture/escape/rest rules, and 48 scripted battles.
+the capture/escape rules and the one-hunter-per-round flow, plus 48 scripted
+battles (most resolve; hunts can legitimately run long now that there is no
+fatigue rule).
 
 Godot build:
 
