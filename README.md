@@ -8,10 +8,10 @@ A turn-based pursuit game in two forms:
   hunt.
 
 The board is **15 × 15**. In the browser build you choose whether to play as
-the **hunters** or the **fugitives**, how many of each (1–5), and **0–60%
-walls**. Hunters act in a fixed rotation; every active fugitive answers each
-round. Random mazes are always connected, so the chase is decided by
-positioning, not by a sealed-off spawn.
+the **hunters** or the **fugitives**, how many of each (1–5), **1–5 exits**,
+and **0–60% walls**. Hunters act in a fixed rotation; every active fugitive
+answers each round. Random mazes are always connected, so the chase is decided
+by positioning, not by a sealed-off spawn.
 
 ![Escape Hunter in the browser](docs/screenshot-web.png)
 
@@ -28,6 +28,7 @@ game is inline HTML, CSS and JavaScript.
 | **Play as** | Hunters / Fugitives | Which side you control. |
 | **Hunters** | 1–5 | Hunters in play. They move one at a time in a fixed rotation. |
 | **Fugitives** | 1–5 | Fugitives in play. Every active fugitive moves each round. |
+| **Exits** | 1–5 | How many exit tiles are placed. Each gets a clear 3×3 doorstep. |
 | **Walls** | 0–60% | Wall coverage. 0% is a completely open room; 60% is a dense maze. |
 | **Difficulty** | Easy–Expert | Skill of the side the AI controls. |
 
@@ -65,8 +66,8 @@ The same sequence runs for both sides; only who controls each phase changes.
 2. **Fugitive phase.** Every active fugitive moves one tile. You move them
    when playing fugitives; the AI moves them when playing hunters. Fugitives
    cannot step onto a hunter or onto each other.
-3. Stepping onto a fugitive captures it. A fugitive that reaches the exit
-   escapes.
+3. Stepping onto a fugitive captures it. A fugitive that reaches **any** exit
+   escapes, and the first escape decides the hunt immediately.
 
 The hunt ends **immediately** when either side has won:
 
@@ -97,12 +98,14 @@ Some starting points:
 
 More walls means more dead ends (good for hunters) but also more hiding
 routes. Fewer walls favours the fugitives; 0% is a pure open-field chase.
+More exits also favours the fugitives: hunters can no longer guard a single
+door, and one escape is enough.
 
 ## Godot 4 project
 
 The native build is the original 1 hunter vs 1 fugitive hunt: 15 × 15, 40%
-walls, the same AI tiers, but no setup panel, no side selection and no fatigue
-rule. It needs Godot **4.3** or newer (standard build, no C#). Import
+walls, one exit, the same AI tiers, but no setup panel, no side selection and
+no fatigue rule. It needs Godot **4.3** or newer (standard build, no C#). Import
 [`project.godot`](project.godot), then press **F5**; from a terminal:
 
 ```bash
@@ -151,11 +154,13 @@ The browser build uses the settings above; the Godot build uses 40% walls.
    rules.
 3. Reject the layout unless enough cells are open and all floor tiles are
    connected (up to 80 attempts).
-4. Place the exit at random. Place the hunters and fugitives on distinct floor
-   tiles so that fugitives start at least 6 steps from every hunter and from
-   the exit, no hunter starts within 2 steps of the exit, and at least one
-   hunter starts closer to the exit than every fugitive. These gaps relax if
-   the map is cramped.
+4. Place the exit tiles at random, at least one cell from the border. Every
+   exit keeps its eight neighbouring cells clear, so an exit is never walled
+   in. Place the hunters and fugitives on distinct floor tiles so that
+   fugitives start at least 6 steps from every hunter and from the nearest
+   exit, no hunter starts within 2 steps of an exit, and at least one hunter
+   starts closer to each fugitive's nearest exit than that fugitive. These
+   gaps relax if the map is cramped.
 5. If generation somehow fails, an open fallback arena is used.
 
 ## Project structure
@@ -211,11 +216,11 @@ Browser build (Node 18+, no packages):
 node tests/web_smoke_test.js
 ```
 
-The browser suite checks layout parsing, A* and BFS behaviour, 175 generated
-maps across wall densities (including 0%), side selection and hunter rotation,
-both AI controllers, the capture/escape rules, and 60 scripted battles from
-both sides (most resolve; hunts can legitimately run long now that there is no
-fatigue rule).
+The browser suite checks layout parsing, A* and BFS behaviour, 225 generated
+maps across wall densities (including 0%), exit counts with their open 3×3
+doorsteps, side selection and hunter rotation, both AI controllers, the
+capture/escape rules, and 70 scripted battles from both sides (most resolve;
+hunts can legitimately run long now that there is no fatigue rule).
 
 Godot build:
 

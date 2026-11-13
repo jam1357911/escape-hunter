@@ -47,8 +47,8 @@ function section(title) {
   console.log('\n' + title);
 }
 
-function settings(side, hunters, fugitives, walls, difficulty = AI.NORMAL) {
-  return { side, hunters, fugitives, walls, difficulty };
+function settings(side, hunters, fugitives, walls, difficulty = AI.NORMAL, exits = 1) {
+  return { side, hunters, fugitives, exits, walls, difficulty };
 }
 
 // ---------------------------------------------------------------- layout ---
@@ -107,9 +107,11 @@ section('Map generation');
     settings('hunters', 1, 1, 20),
     settings('hunters', 1, 1, 40),
     settings('hunters', 2, 2, 40),
+    settings('hunters', 2, 2, 40, AI.NORMAL, 3),
     settings('hunters', 3, 3, 45),
+    settings('hunters', 3, 3, 50, AI.HARD, 5),
     settings('hunters', 5, 5, 60),
-    settings('fugitives', 2, 4, 30)
+    settings('fugitives', 2, 4, 30, AI.NORMAL, 2)
   ];
   let broken = 0;
   let generated = 0;
@@ -128,17 +130,29 @@ section('Map generation');
 
       const actors = [...spawns.cops, ...spawns.fugitives];
       const unique = new Set(actors.map((cell) => `${cell.x},${cell.y}`));
+      const uniqueExits = new Set(grid.exits.map((cell) => `${cell.x},${cell.y}`));
       let valid =
         spawns.cops.length === config.hunters &&
         spawns.fugitives.length === config.fugitives &&
         unique.size === actors.length &&
-        grid.exits.length === 1;
+        grid.exits.length === config.exits &&
+        uniqueExits.size === config.exits;
 
       for (const actor of actors) {
         if (!valid) break;
         if (!grid.isWalkable(actor.x, actor.y)) valid = false;
-        if (same(actor, grid.exits[0])) valid = false;
-        if (!Pathfinding.isReachable(grid, actor, grid.exits[0])) valid = false;
+        if (grid.exits.some((exit) => same(actor, exit))) valid = false;
+      }
+
+      if (valid) {
+        for (const exit of grid.exits) {
+          if (!Pathfinding.isReachable(grid, actors[0], exit)) valid = false;
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              if (!grid.isWalkable(exit.x + dx, exit.y + dy)) valid = false;
+            }
+          }
+        }
       }
 
       if (!valid) broken += 1;
@@ -278,6 +292,19 @@ section('Game state machine');
   check(escapeResult.kind === 'escaped' && escape.outcome === 'fugitives', 'reaching the exit wins for the fugitive');
   check(escape.playerWon === false, 'a hunter player loses when a fugitive escapes');
 
+  // With several exits, any one of them wins for the fugitives.
+  const multi = new Game(makeRng(13), settings('hunters', 1, 2, 40, AI.NORMAL, 3));
+  multi.newGame();
+  check(multi.grid.exits.length === 3, 'three exits are placed on the board');
+  const farExit = multi.grid.exits[multi.grid.exits.length - 1];
+  multi.fugitives[0].x = farExit.x;
+  multi.fugitives[0].y = farExit.y - 1;
+  multi.grid.setTile(farExit.x, farExit.y - 1, TILE.FLOOR);
+  multi.aiList[0].chooseMove = () => ({ x: farExit.x, y: farExit.y });
+  multi.beginFugitivePhase();
+  const multiResult = multi.stepFugitive();
+  check(multiResult.kind === 'escaped' && multi.outcome === 'fugitives', 'any exit wins for the fugitives');
+
   // The same escape is a win when the player controls the fugitive.
   const reverse = new Game(makeRng(7), settings('fugitives', 1, 1, 0, AI.EASY));
   reverse.newGame();
@@ -307,10 +334,11 @@ section('Simulated battles');
   const configs = [
     settings('hunters', 1, 1, 40),
     settings('hunters', 2, 2, 40),
+    settings('hunters', 2, 2, 45, AI.NORMAL, 3),
     settings('hunters', 3, 2, 45),
     settings('fugitives', 1, 1, 40),
     settings('fugitives', 2, 2, 40),
-    settings('fugitives', 1, 3, 30)
+    settings('fugitives', 1, 3, 30, AI.NORMAL, 2)
   ];
   let resolved = 0;
   let total = 0;

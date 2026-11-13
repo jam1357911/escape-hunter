@@ -586,6 +586,20 @@
             <span class="chev" aria-hidden="true"></span>
           </div>
         </div>
+        <div class="field">
+          <span>Exits</span>
+          <div class="select compact">
+            <label class="sr-only" for="exits">Number of exits</label>
+            <select id="exits" title="Number of exits">
+              <option value="1" selected>1</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+              <option value="4">4</option>
+              <option value="5">5</option>
+            </select>
+            <span class="chev" aria-hidden="true"></span>
+          </div>
+        </div>
         <div class="field walls-field">
           <span>Walls <output id="walls-value" for="walls">40%</output></span>
           <input id="walls" type="range" min="0" max="60" step="5" value="40" title="Wall coverage">
@@ -652,6 +666,7 @@
   // Rounds until the AI side stops dodging and commits (fugitive AI only).
   const URGENCY_TURNS = [8, 14, 20, 30];
   const MAX_ACTORS = 5;
+  const MAX_EXITS = 5;
 
   const TAU = Math.PI * 2;
   const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
@@ -935,7 +950,8 @@
     static _isPlayable(grid, settings) {
       const open = grid.walkableCells();
       const actors = settings.hunters + settings.fugitives;
-      if (open.length < Math.max(MapGenerator.MIN_OPEN_CELLS, actors + 8)) return false;
+      const exits = clamp(Number(settings.exits) || 1, 1, MAX_EXITS);
+      if (open.length < Math.max(MapGenerator.MIN_OPEN_CELLS, actors + exits + 6)) return false;
 
       const seen = new Set([idOf(grid, open[0])]);
       const frontier = [open[0]];
@@ -954,18 +970,19 @@
     static _placeActors(grid, rng, settings) {
       const open = grid.walkableCells();
       const total = settings.hunters + settings.fugitives;
-      if (open.length < total + 1) return null;
+      const exitCount = clamp(Number(settings.exits) || 1, 1, MAX_EXITS);
+      if (open.length < total + exitCount + 1) return null;
 
-      const exitCell = open[Math.floor(rng() * open.length)];
-      grid.setTile(exitCell.x, exitCell.y, TILE.EXIT);
-      const pool = open.filter((cell) => !same(cell, exitCell));
+      const exits = MapGenerator._placeExits(grid, open, exitCount, rng);
+      if (!exits) return null;
+      const pool = open.filter((cell) => !exits.some((exit) => same(cell, exit)));
 
       for (let gap = MapGenerator.MIN_GAP; gap >= 0; gap -= 2) {
         for (let attempt = 0; attempt < 300; attempt++) {
           const shuffled = MapGenerator._shuffled(pool, rng);
           const cops = shuffled.slice(0, settings.hunters);
           const fugitives = shuffled.slice(settings.hunters, total);
-          if (gap > 0 && !MapGenerator._spaced(fugitives, cops, exitCell, gap)) continue;
+          if (gap > 0 && !MapGenerator._spaced(fugitives, cops, exits, gap)) continue;
           return { cops, fugitives };
         }
       }
@@ -977,16 +994,81 @@
       };
     }
 
-    static _spaced(fugitives, cops, exitCell, gap) {
-      for (const cop of cops) {
-        if (manhattan(cop, exitCell) < 2) return false;
+    static _placeExits(grid, open, count, rng) {
+      const exits = [];
+      const used = new Set();
+      // Keep exits one cell away from the border so the whole 3x3 pocket
+      // around each exit is inside the playable room.
+      const candidates = open.filter((cell) =>
+        cell.x >= 2 && cell.x <= grid.w - 3 && cell.y >= 2 && cell.y <= grid.h - 3
+      );
+      const pool = candidates.length > 0 ? candidates : open;
+
+      for (let index = 0; index < count; index++) {
+        let chosen = null;
+        for (let attempt = 0; attempt < 200 && !chosen; attempt++) {
+          const cell = pool[Math.floor(rng() * pool.length)];
+          if (used.has(`${cell.x},${cell.y}`)) continue;
+          if (exits.some((exit) => manhattan(exit, cell) < 2)) continue;
+          chosen = cell;
+        }
+        if (!chosen) {
+          for (const cell of pool) {
+            if (used.has(`${cell.x},${cell.y}`)) continue;
+            if (exits.some((exit) => manhattan(exit, cell) < 2)) continue;
+            chosen = cell;
+            break;
+          }
+        }
+        if (!chosen) {
+          chosen = pool.find((cell) => !used.has(`${cell.x},${cell.y}`)) || null;
+        }
+        if (!chosen) return null;
+        used.add(`${chosen.x},${chosen.y}`);
+        exits.push(chosen);
+        grid.setTile(chosen.x, chosen.y, TILE.EXIT);
+
+        // Every cell around an exit stays clear, so an exit can never be
+        // walled in and the doorstep is always open.
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            const x = chosen.x + dx;
+            const y = chosen.y + dy;
+            if (!grid.isInterior(x, y)) continue;
+            if (grid.isExit(x, y)) continue;
+            if (grid.isWall(x, y)) grid.setTile(x, y, TILE.FLOOR);
+          }
+        }
       }
-      let closestCop = Infinity;
-      for (const cop of cops) closestCop = Math.min(closestCop, manhattan(cop, exitCell));
+      return exits;
+    }
+
+    static _spaced(fugitives, cops, exits, gap) {
+      // No hunter starts on an exit's doorstep.
+      for (const cop of cops) {
+        for (const exit of exits) {
+          if (manhattan(cop, exit) < 2) return false;
+        }
+      }
 
       for (const fugitive of fugitives) {
-        if (manhattan(fugitive, exitCell) < gap) return false;
-        if (closestCop >= manhattan(fugitive, exitCell)) return false;
+        let nearestExit = null;
+        let nearestDistance = Infinity;
+        for (const exit of exits) {
+          const distance = manhattan(fugitive, exit);
+          if (distance < gap) return false;
+          if (distance < nearestDistance) {
+            nearestDistance = distance;
+            nearestExit = exit;
+          }
+        }
+        // At least one hunter should be able to cut the fugitive off from
+        // its nearest exit.
+        if (nearestExit) {
+          let closestCop = Infinity;
+          for (const cop of cops) closestCop = Math.min(closestCop, manhattan(cop, nearestExit));
+          if (closestCop >= nearestDistance) return false;
+        }
         for (const cop of cops) {
           if (manhattan(fugitive, cop) < gap) return false;
         }
@@ -996,8 +1078,10 @@
 
     static _fallback(grid, settings) {
       grid.reset();
-      const exitCell = { x: Math.floor(grid.w / 2), y: grid.h - 2 };
-      grid.setTile(exitCell.x, exitCell.y, TILE.EXIT);
+      const count = clamp(Number(settings.exits) || 1, 1, MAX_EXITS);
+      for (let index = 0; index < count; index++) {
+        grid.setTile(3 + index * 2, grid.h - 3, TILE.EXIT);
+      }
       const cops = [];
       const fugitives = [];
       for (let i = 0; i < settings.hunters; i++) cops.push({ x: 1, y: 1 + i * 2 });
@@ -1246,7 +1330,16 @@
       // Hard and Expert try to reach a point on the fugitive's exit route
       // before the fugitive gets there.
       if (this.difficulty >= AI.HARD) {
-        const route = Pathfinding.findPath(grid, target, grid.exits[0]);
+        let exitCell = grid.exits[0];
+        let bestDistance = Infinity;
+        for (const exit of grid.exits) {
+          const distance = manhattan(target, exit);
+          if (distance < bestDistance) {
+            bestDistance = distance;
+            exitCell = exit;
+          }
+        }
+        const route = Pathfinding.findPath(grid, target, exitCell);
         const distances = Pathfinding.distanceField(grid, [hunter], blocked);
         for (let i = 0; i < route.length; i++) {
           const distance = distances.get(idOf(grid, route[i]));
@@ -1548,7 +1641,7 @@
 
   const FONT = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
   const SETTINGS_KEY = 'escape-hunter-settings-v4';
-  const DEFAULT_SETTINGS = { side: 'hunters', hunters: 1, fugitives: 1, walls: 40, difficulty: 1 };
+  const DEFAULT_SETTINGS = { side: 'hunters', hunters: 1, fugitives: 1, exits: 1, walls: 40, difficulty: 1 };
 
   function shade(hex, factor) {
     const value = parseInt(hex.slice(1), 16);
@@ -1566,6 +1659,7 @@
       side: document.getElementById('side'),
       hunters: document.getElementById('hunters'),
       fugitives: document.getElementById('fugitives'),
+      exits: document.getElementById('exits'),
       walls: document.getElementById('walls'),
       wallsValue: document.getElementById('walls-value'),
       apply: document.getElementById('apply'),
@@ -1615,6 +1709,7 @@
         side: els.side.value === 'fugitives' ? 'fugitives' : 'hunters',
         hunters: clamp(Number(els.hunters.value) || 1, 1, MAX_ACTORS),
         fugitives: clamp(Number(els.fugitives.value) || 1, 1, MAX_ACTORS),
+        exits: clamp(Number(els.exits.value) || 1, 1, MAX_EXITS),
         walls: clamp(Number(els.walls.value) || 0, 0, 60),
         difficulty: clamp(Number(els.difficulty.value) || 0, 0, 3)
       };
@@ -1624,6 +1719,7 @@
       els.side.value = settings.side;
       els.hunters.value = String(settings.hunters);
       els.fugitives.value = String(settings.fugitives);
+      els.exits.value = String(settings.exits);
       els.walls.value = String(settings.walls);
       els.wallsValue.textContent = `${settings.walls}%`;
       els.difficulty.value = String(settings.difficulty);
@@ -1632,7 +1728,8 @@
     function updateSetupSummary() {
       const current = readSettings();
       els.setupSummary.textContent =
-        `${current.hunters} vs ${current.fugitives} \u00b7 ${current.walls}% walls \u00b7 you: ${current.side}`;
+        `${current.hunters}v${current.fugitives} \u00b7 ${current.exits} exit${current.exits === 1 ? '' : 's'} ` +
+        `\u00b7 ${current.walls}% walls \u00b7 you: ${current.side}`;
     }
 
     function loadSettings() {
@@ -1643,6 +1740,7 @@
             side: saved.side === 'fugitives' ? 'fugitives' : 'hunters',
             hunters: clamp(Number(saved.hunters) || 1, 1, MAX_ACTORS),
             fugitives: clamp(Number(saved.fugitives) || 1, 1, MAX_ACTORS),
+            exits: clamp(Number(saved.exits) || 1, 1, MAX_EXITS),
             walls: clamp(Number(saved.walls) || 0, 0, 60),
             difficulty: clamp(Number(saved.difficulty) || 0, 0, 3)
           };
@@ -1949,7 +2047,7 @@
           `All ${game.totalFugitives} fugitive${game.totalFugitives === 1 ? '' : 's'} caught in ${rounds}.`;
       } else {
         els.resultMessage.textContent =
-          `A fugitive reached the exit in ${rounds} - ${game.caught} of ${game.totalFugitives} caught.`;
+          `A fugitive reached an exit in ${rounds} - ${game.caught} of ${game.totalFugitives} caught.`;
       }
 
       els.overlay.classList.add('open');
@@ -2006,6 +2104,7 @@
 
     els.hunters.addEventListener('change', updateSetupSummary);
     els.fugitives.addEventListener('change', updateSetupSummary);
+    els.exits.addEventListener('change', updateSetupSummary);
     els.side.addEventListener('change', updateSetupSummary);
 
     els.difficulty.addEventListener('change', () => {
