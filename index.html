@@ -29,6 +29,8 @@
 
   * { box-sizing: border-box; }
 
+  [hidden] { display: none !important; }
+
   html, body { height: 100%; }
 
   body {
@@ -110,6 +112,13 @@
     line-height: 1.2;
     color: var(--accent);
     font-variant-numeric: tabular-nums;
+  }
+
+  .turn .turn-max {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    letter-spacing: 0;
   }
 
   .select { position: relative; }
@@ -266,6 +275,14 @@
     font-size: 11.5px;
     color: var(--muted);
     white-space: nowrap;
+  }
+
+  .setup-warning {
+    flex: 1 1 100%;
+    margin: 0;
+    font-size: 11.5px;
+    line-height: 1.45;
+    color: var(--amber);
   }
 
   .board-wrap {
@@ -525,7 +542,7 @@
       <div class="controls">
         <div class="turn" title="Round counter">
           <span class="label">ROUND</span>
-          <span class="value" id="turn">1</span>
+          <span class="value"><span id="turn">1</span><span class="turn-max" id="turn-max"></span></span>
         </div>
         <div class="select">
           <label class="sr-only" for="difficulty">Fugitive difficulty</label>
@@ -534,6 +551,7 @@
             <option value="1" selected>Normal</option>
             <option value="2">Hard</option>
             <option value="3">Expert</option>
+            <option value="4">Max</option>
           </select>
           <span class="chev" aria-hidden="true"></span>
         </div>
@@ -591,11 +609,31 @@
           <div class="select compact">
             <label class="sr-only" for="exits">Number of exits</label>
             <select id="exits" title="Number of exits">
+              <option value="0">0 (none)</option>
               <option value="1" selected>1</option>
               <option value="2">2</option>
               <option value="3">3</option>
               <option value="4">4</option>
               <option value="5">5</option>
+            </select>
+            <span class="chev" aria-hidden="true"></span>
+          </div>
+        </div>
+        <div class="field">
+          <span>Round limit</span>
+          <div class="select compact">
+            <label class="sr-only" for="limit">Round limit</label>
+            <select id="limit" title="Rounds to catch every fugitive before they win">
+              <option value="0">No limit</option>
+              <option value="10">10</option>
+              <option value="15">15</option>
+              <option value="20">20</option>
+              <option value="30">30</option>
+              <option value="40">40</option>
+              <option value="60">60</option>
+              <option value="80">80</option>
+              <option value="120">120</option>
+              <option value="200">200</option>
             </select>
             <span class="chev" aria-hidden="true"></span>
           </div>
@@ -606,6 +644,7 @@
         </div>
         <button id="apply" type="button" title="Start a hunt with these settings">New hunt</button>
         <p class="setup-hint">Changes apply to the next hunt.</p>
+        <p class="setup-warning" id="setup-warning" hidden>No exits: every fugitive must be caught within the round limit, or the fugitives win.</p>
       </div>
     </details>
 
@@ -628,7 +667,7 @@
       <p class="legend" aria-label="Legend">
         <span class="item"><span class="swatch hunter">H</span>Hunter</span>
         <span class="item"><span class="swatch fugitive">F</span>Fugitive</span>
-        <span class="item"><span class="swatch exit">E</span>Exit</span>
+        <span class="item" id="legend-exit"><span class="swatch exit">E</span>Exit</span>
       </p>
     </footer>
   </div>
@@ -655,18 +694,27 @@
   const ROWS = 15;
   const TILE = { WALL: 0, FLOOR: 1, EXIT: 2 };
   const DIRS = [[0, -1], [1, 0], [0, 1], [-1, 0]]; // up, right, down, left
-  const AI = { EASY: 0, NORMAL: 1, HARD: 2, EXPERT: 3 };
+  const AI = { EASY: 0, NORMAL: 1, HARD: 2, EXPERT: 3, MAX: 4 };
   const DIFFICULTY = [
     { name: 'Easy', hint: 'Fugitives wander randomly.', hunterHint: 'Hunters wander randomly.' },
     { name: 'Normal', hint: 'Fugitives run for the nearest exit.', hunterHint: 'Hunters chase the nearest fugitive.' },
     { name: 'Hard', hint: 'Fugitives dodge the hunters.', hunterHint: 'Hunters cut off the exit route.' },
-    { name: 'Expert', hint: 'Fugitives plan three moves ahead.', hunterHint: 'Hunters cut off the exit route and chase hard.' }
+    { name: 'Expert', hint: 'Fugitives plan three moves ahead.', hunterHint: 'Hunters cut off the exit route and chase hard.' },
+    { name: 'Max', hint: 'Fugitives play the near-perfect line.', hunterHint: 'Hunters coordinate to cut off every exit.' }
   ];
 
   // Rounds until the AI side stops dodging and commits (fugitive AI only).
-  const URGENCY_TURNS = [8, 14, 20, 30];
+  const URGENCY_TURNS = [8, 14, 20, 30, 40];
   const MAX_ACTORS = 5;
   const MAX_EXITS = 5;
+  const MAX_ROUND_LIMIT = 1000;
+  // A board with no exit has no other way to end, so it always gets a clock.
+  const NO_EXIT_DEFAULT_LIMIT = 60;
+  // Max searches the game tree instead of scoring one move at a time.
+  // Depth is counted in rounds, i.e. one hunter move plus one fugitive move.
+  const MAX_FUGITIVE_ROUNDS = 3;
+  const MAX_HUNTER_ROUNDS = 4;
+  const MAX_SEARCH_WIN = 1e6;
 
   const TAU = Math.PI * 2;
   const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
@@ -675,6 +723,15 @@
   const manhattan = (a, b) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
   const chebyshev = (a, b) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
   const idOf = (grid, cell) => cell.y * grid.w + cell.x;
+
+  // 0 exits is legal; unlike the actor counts it must not fall back to 1.
+  const exitCountOf = (settings) =>
+    clamp(Math.round(Number(settings && settings.exits) || 0), 0, MAX_EXITS);
+
+  function normalizeLimit(limit, exits) {
+    const value = clamp(Math.round(Number(limit) || 0), 0, MAX_ROUND_LIMIT);
+    return exits === 0 && value === 0 ? NO_EXIT_DEFAULT_LIMIT : value;
+  }
 
   function makeRng(seed) {
     let state = seed >>> 0;
@@ -950,7 +1007,7 @@
     static _isPlayable(grid, settings) {
       const open = grid.walkableCells();
       const actors = settings.hunters + settings.fugitives;
-      const exits = clamp(Number(settings.exits) || 1, 1, MAX_EXITS);
+      const exits = exitCountOf(settings);
       if (open.length < Math.max(MapGenerator.MIN_OPEN_CELLS, actors + exits + 6)) return false;
 
       const seen = new Set([idOf(grid, open[0])]);
@@ -970,7 +1027,7 @@
     static _placeActors(grid, rng, settings) {
       const open = grid.walkableCells();
       const total = settings.hunters + settings.fugitives;
-      const exitCount = clamp(Number(settings.exits) || 1, 1, MAX_EXITS);
+      const exitCount = exitCountOf(settings);
       if (open.length < total + exitCount + 1) return null;
 
       const exits = MapGenerator._placeExits(grid, open, exitCount, rng);
@@ -1078,7 +1135,7 @@
 
     static _fallback(grid, settings) {
       grid.reset();
-      const count = clamp(Number(settings.exits) || 1, 1, MAX_EXITS);
+      const count = exitCountOf(settings);
       for (let index = 0; index < count; index++) {
         grid.setTile(3 + index * 2, grid.h - 3, TILE.EXIT);
       }
@@ -1112,7 +1169,7 @@
       this.recent = [];
     }
 
-    chooseMove(grid, cops, fugitive, others, round = 0) {
+    chooseMove(grid, cops, fugitive, others, round = 0, activeHunter = 0) {
       const blocked = [];
       for (const cop of cops) blocked.push(cop);
       for (const other of others) {
@@ -1122,7 +1179,10 @@
       const options = this._legalMoves(grid, fugitive, blocked);
       if (options.length === 0) return fugitive;
 
-      const exitField = Pathfinding.distanceField(grid, grid.exits, blocked);
+      // With no exit on the board the only way to win is to stay free, so
+      // the exit-seeking heuristics switch to evasion.
+      const hasExits = grid.exits.length > 0;
+      const exitField = hasExits ? Pathfinding.distanceField(grid, grid.exits, blocked) : null;
       const urgency = clamp(round / (URGENCY_TURNS[this.difficulty] || 20), 0, 1);
 
       let choice;
@@ -1131,13 +1191,22 @@
           choice = this._randomMove(options);
           break;
         case AI.HARD:
-          choice = this._cautiousMove(grid, options, exitField, cops, urgency);
+          choice = hasExits
+            ? this._cautiousMove(grid, options, exitField, cops, urgency)
+            : this._evadeMove(grid, options, cops);
           break;
         case AI.EXPERT:
-          choice = this._expertMove(grid, options, exitField, cops, fugitive, urgency);
+          choice = hasExits
+            ? this._expertMove(grid, options, exitField, cops, fugitive, urgency)
+            : this._expertEvadeMove(grid, options, cops);
+          break;
+        case AI.MAX:
+          choice = this._maxMove(grid, cops, fugitive, others, activeHunter);
           break;
         default:
-          choice = this._greedyMove(grid, options, exitField);
+          choice = hasExits
+            ? this._greedyMove(grid, options, exitField)
+            : this._evadeMove(grid, options, cops);
       }
 
       this._remember(fugitive);
@@ -1195,6 +1264,71 @@
         }
       }
       return best;
+    }
+
+    // No-exit mode: keep as far from the hunters as possible, prefer open
+    // ground over dead ends and avoid pacing between the same cells.
+    _evadeMove(grid, options, cops) {
+      const field = Pathfinding.distanceField(grid, cops);
+      let best = options[0];
+      let bestScore = -Infinity;
+      for (const cell of options) {
+        const distance = field.get(idOf(grid, cell)) ?? 0;
+        const openness = grid.neighbors(cell.x, cell.y).length;
+        const score = distance * 4 + openness * 1.5 - (openness <= 1 ? 4 : 0) - (this._wasRecent(cell) ? 3 : 0);
+        if (score > bestScore) {
+          bestScore = score;
+          best = cell;
+        }
+      }
+      return best;
+    }
+
+    _expertEvadeMove(grid, options, cops) {
+      const field = Pathfinding.distanceField(grid, cops);
+      let best = options[0];
+      let bestScore = -Infinity;
+      for (const cell of options) {
+        const distance = field.get(idOf(grid, cell)) ?? 0;
+        const openness = grid.neighbors(cell.x, cell.y).length;
+        const survival = this._simulateSurvival(grid, cell, cops);
+        let score = survival * 60 + distance * 3 + openness * 1.5;
+        if (this._wasRecent(cell)) score -= 2;
+        if (score > bestScore) {
+          bestScore = score;
+          best = cell;
+        }
+      }
+      return best;
+    }
+
+    // How many of the next three turns the fugitive survives when the
+    // hunters keep chasing; used to rank no-exit moves.
+    _simulateSurvival(grid, start, cops) {      let fugitive = { x: start.x, y: start.y };
+      const hunters = cops.map((cop) => ({ x: cop.x, y: cop.y }));
+      for (let turn = 0; turn < 3; turn++) {
+        for (const hunter of hunters) {
+          const step = this._hunterStep(grid, hunter, fugitive);
+          hunter.x = step.x;
+          hunter.y = step.y;
+          if (same(hunter, fugitive)) return turn;
+        }
+        const options = this._legalMoves(grid, fugitive, hunters);
+        if (options.length === 0) return turn;
+        const field = Pathfinding.distanceField(grid, hunters);
+        let best = options[0];
+        let bestScore = -Infinity;
+        for (const cell of options) {
+          const distance = field.get(idOf(grid, cell)) ?? 0;
+          const score = distance * 4 + grid.neighbors(cell.x, cell.y).length;
+          if (score > bestScore) {
+            bestScore = score;
+            best = cell;
+          }
+        }
+        fugitive = best;
+      }
+      return 3;
     }
 
     _expertMove(grid, options, exitField, cops, fugitive, urgency) {
@@ -1298,6 +1432,118 @@
       }
       return threat;
     }
+
+    /* --------------------------- Max: adversarial search ------------------ *
+     * Max plays out the next few rounds as a game tree: the hunters choose
+     * the move that hurts the fugitive most, the fugitive answers with the
+     * best reply.  Leaves are scored by escape progress, survival margin and
+     * mobility, so the chosen move holds up against a whole line of play
+     * instead of looking one step ahead.
+     * ---------------------------------------------------------------------- */
+
+    _maxMove(grid, cops, fugitive, others, activeHunter = 0) {
+      const obstacles = others.filter((other) => other.status === 'active' && !same(other, fugitive));
+      const options = this._legalMoves(grid, fugitive, cops.concat(obstacles));
+      if (options.length === 0) return fugitive;
+
+      const ctx = { hasExits: grid.exits.length > 0, obstacles };
+      const hunters = cops.map((cop) => ({ x: cop.x, y: cop.y }));
+      const ordered = options.slice().sort(
+        (a, b) => this._maxRootOrder(grid, b, cops) - this._maxRootOrder(grid, a, cops)
+      );
+
+      let best = ordered[0];
+      let bestScore = -Infinity;
+      for (const option of ordered) {
+        const score = ctx.hasExits && grid.isExit(option.x, option.y)
+          ? MAX_SEARCH_WIN
+          : this._maxHunterTurn(grid, option, hunters, activeHunter, MAX_FUGITIVE_ROUNDS, -Infinity, Infinity, ctx);
+        const better = score > bestScore
+          || (score === bestScore && !this._wasRecent(option) && this._wasRecent(best));
+        if (better) {
+          bestScore = score;
+          best = option;
+        }
+      }
+      return best;
+    }
+
+    // A hunter turn: the active hunter picks the reply that minimises value.
+    _maxHunterTurn(grid, fug, cops, active, depth, alpha, beta, ctx) {
+      if (depth <= 0) return this._maxFugitiveValue(grid, fug, cops, ctx);
+      const index = ((active % cops.length) + cops.length) % cops.length;
+      const hunter = cops[index];
+      const blocked = cops.filter((_, i) => i !== index);
+      const moves = [];
+      for (const cell of grid.neighbors(hunter.x, hunter.y)) {
+        if (blocked.some((actor) => same(actor, cell))) continue;
+        moves.push(cell);
+      }
+      if (moves.length === 0) {
+        return this._maxFugitiveTurn(grid, fug, cops, (index + 1) % cops.length, depth, alpha, beta, ctx);
+      }
+      moves.sort((a, b) => manhattan(a, fug) - manhattan(b, fug));
+      let value = Infinity;
+      for (const move of moves) {
+        if (same(move, fug)) return -MAX_SEARCH_WIN + depth;
+        const next = cops.map((cop, i) => (i === index ? { x: move.x, y: move.y } : cop));
+        value = Math.min(value,
+          this._maxFugitiveTurn(grid, fug, next, (index + 1) % cops.length, depth, alpha, beta, ctx));
+        if (value <= alpha) break;
+        beta = Math.min(beta, value);
+      }
+      return value;
+    }
+
+    // The fugitive turn: pick the best reply to that hunter move.
+    _maxFugitiveTurn(grid, fug, cops, active, depth, alpha, beta, ctx) {
+      const moves = this._legalMoves(grid, fug, cops.concat(ctx.obstacles));
+      if (moves.length === 0) {
+        if (depth <= 1) return this._maxFugitiveValue(grid, fug, cops, ctx);
+        return this._maxHunterTurn(grid, fug, cops, active, depth - 1, alpha, beta, ctx);
+      }
+      moves.sort((a, b) => this._maxRootOrder(grid, b, cops) - this._maxRootOrder(grid, a, cops));
+      let value = -Infinity;
+      for (const move of moves) {
+        if (ctx.hasExits && grid.isExit(move.x, move.y)) return MAX_SEARCH_WIN;
+        const next = { x: move.x, y: move.y };
+        const score = depth <= 1
+          ? this._maxFugitiveValue(grid, next, cops, ctx)
+          : this._maxHunterTurn(grid, next, cops, active, depth - 1, alpha, beta, ctx);
+        value = Math.max(value, score);
+        if (value >= beta) break;
+        alpha = Math.max(alpha, value);
+      }
+      return value;
+    }
+
+    _maxFugitiveValue(grid, fug, cops, ctx) {
+      const blocked = cops.concat(ctx.obstacles);
+      const hunterField = Pathfinding.distanceField(grid, cops);
+      const nearest = hunterField.get(idOf(grid, fug)) ?? 40;
+      const mobility = this._legalMoves(grid, fug, blocked).length;
+      let score = Math.min(nearest, 10) * 45 + mobility * 10;
+      if (mobility <= 1) score -= 50;
+      if (ctx.hasExits) {
+        const exitField = Pathfinding.distanceField(grid, grid.exits, blocked);
+        const distance = exitField.get(idOf(grid, fug));
+        if (distance === undefined) score -= 1200;
+        else score -= Math.min(distance, 45) * 55;
+      }
+      return score;
+    }
+
+    // Move-ordering heuristic for the search (does not affect the result).
+    _maxRootOrder(grid, cell, cops) {
+      let exitDistance = 0;
+      if (grid.exits.length > 0) {
+        exitDistance = Infinity;
+        for (const exit of grid.exits) exitDistance = Math.min(exitDistance, manhattan(cell, exit));
+      }
+      let copDistance = Infinity;
+      for (const cop of cops) copDistance = Math.min(copDistance, manhattan(cell, cop));
+      return -exitDistance * 10 + copDistance;
+    }
   }
 
   class HunterAI {
@@ -1310,6 +1556,8 @@
       const targets = fugitives.filter((fugitive) => fugitive.status === 'active');
       if (targets.length === 0) return hunter;
       const blocked = cops.filter((cop) => cop !== hunter);
+
+      if (this.difficulty === AI.MAX) return this._maxMove(grid, hunter, targets, cops);
 
       if (this.difficulty === AI.EASY) {
         const options = [];
@@ -1329,7 +1577,7 @@
 
       // Hard and Expert try to reach a point on the fugitive's exit route
       // before the fugitive gets there.
-      if (this.difficulty >= AI.HARD) {
+      if (this.difficulty >= AI.HARD && grid.exits.length > 0) {
         let exitCell = grid.exits[0];
         let bestDistance = Infinity;
         for (const exit of grid.exits) {
@@ -1353,6 +1601,185 @@
       const path = Pathfinding.findPath(grid, hunter, target, blocked);
       return path.length > 0 ? path[0] : hunter;
     }
+
+    /* --------------------------- Max: adversarial search ------------------ *
+     * Max hunter searches a few rounds ahead. Every candidate step is scored
+     * after the fugitives answer with their best escape move and the other
+     * hunters take their turns, so it coordinates the rotation and closes
+     * exits instead of only chasing the nearest runner.
+     * ---------------------------------------------------------------------- */
+
+    _maxMove(grid, hunter, fugitives, cops) {
+      const blocked = cops.filter((cop) => cop !== hunter);
+      const moves = [];
+      for (const cell of grid.neighbors(hunter.x, hunter.y)) {
+        if (blocked.some((cop) => same(cop, cell))) continue;
+        moves.push(cell);
+      }
+      if (moves.length === 0) return hunter;
+
+      const index = Math.max(0, cops.findIndex((cop) => same(cop, hunter)));
+      let best = hunter;
+      let bestScore = -Infinity;
+      for (const move of moves) {
+        let remaining = fugitives;
+        if (fugitives.some((fugitive) => same(fugitive, move))) {
+          remaining = fugitives.filter((fugitive) => !same(fugitive, move));
+          if (remaining.length === 0) return move;
+        }
+        const nextCops = cops.map((cop, i) =>
+          i === index ? { x: move.x, y: move.y } : { x: cop.x, y: cop.y });
+        const search = this._maxAfterHunterMove(
+          grid, nextCops, remaining, (index + 1) % cops.length, MAX_HUNTER_ROUNDS - 1);
+        // The deep search can tie between moves that reach the same position
+        // within its horizon; the immediate value keeps it moving forward
+        // instead of pacing.  Captures and escapes still dominate.
+        const reply = this._maxFugitiveReplies(grid, nextCops, remaining);
+        const immediate = reply.some((fugitive) => grid.isExit(fugitive.x, fugitive.y))
+          ? -MAX_SEARCH_WIN
+          : this._maxHunterValue(grid, nextCops, reply);
+        const score = search + immediate * 0.5;
+        if (score > bestScore) {
+          bestScore = score;
+          best = move;
+        }
+      }
+      return best;
+    }
+
+    _maxAfterHunterMove(grid, cops, fugitives, nextActive, rounds) {
+      const replied = this._maxFugitiveReplies(grid, cops, fugitives);
+      if (replied.some((fugitive) => grid.isExit(fugitive.x, fugitive.y))) return -MAX_SEARCH_WIN;
+      if (rounds <= 0) return this._maxHunterValue(grid, cops, replied);
+      return this._maxHunterTurn(grid, cops, replied, nextActive, rounds);
+    }
+
+    _maxHunterTurn(grid, cops, fugitives, active, rounds) {
+      if (fugitives.length === 0) return MAX_SEARCH_WIN;
+      if (rounds <= 0) return this._maxHunterValue(grid, cops, fugitives);
+      const index = ((active % cops.length) + cops.length) % cops.length;
+      const hunter = cops[index];
+      const blocked = cops.filter((_, i) => i !== index);
+      const moves = [];
+      for (const cell of grid.neighbors(hunter.x, hunter.y)) {
+        if (blocked.some((cop) => same(cop, cell))) continue;
+        moves.push(cell);
+      }
+      if (moves.length === 0) {
+        return this._maxAfterHunterMove(grid, cops, fugitives, (index + 1) % cops.length, rounds - 1);
+      }
+      let value = -Infinity;
+      for (const move of moves) {
+        let remaining = fugitives;
+        if (fugitives.some((fugitive) => same(fugitive, move))) {
+          remaining = fugitives.filter((fugitive) => !same(fugitive, move));
+          if (remaining.length === 0) return MAX_SEARCH_WIN;
+        }
+        const nextCops = cops.map((cop, i) => (i === index ? { x: move.x, y: move.y } : cop));
+        value = Math.max(value, this._maxAfterHunterMove(
+          grid, nextCops, remaining, (index + 1) % cops.length, rounds - 1));
+      }
+      return value;
+    }
+
+    // Model the fugitives' reply: each one runs the shortest route to a door
+    // (or, with no exit left to aim at, keeps away from the hunters).  This
+    // is the line the hunters have to plan against.
+    _maxFugitiveReplies(grid, cops, fugitives) {
+      const positions = fugitives.map((fugitive) => ({ x: fugitive.x, y: fugitive.y }));
+      if (positions.length === 0) return positions;
+      const copField = Pathfinding.distanceField(grid, cops);
+
+      for (let i = 0; i < positions.length; i++) {
+        const blockers = cops.concat(positions.filter((_, j) => j !== i));
+        const options = this._maxLegalMoves(grid, positions[i], blockers);
+        if (options.length === 0) continue;
+
+        if (grid.exits.length > 0) {
+          let bestRoute = null;
+          for (const exit of grid.exits) {
+            const route = Pathfinding.findPath(grid, positions[i], exit, blockers);
+            if (route.length === 0) continue;
+            if (!bestRoute || route.length < bestRoute.length) bestRoute = route;
+          }
+          if (bestRoute) {
+            positions[i] = bestRoute[0];
+            continue;
+          }
+        }
+
+        let chosen = positions[i];
+        let bestScore = -Infinity;
+        for (const cell of options) {
+          const dCop = copField.get(idOf(grid, cell)) ?? 40;
+          const score = -dCop * 8 + grid.neighbors(cell.x, cell.y).length * 4;
+          if (score > bestScore) {
+            bestScore = score;
+            chosen = cell;
+          }
+        }
+        positions[i] = chosen;
+      }
+      return positions;
+    }
+
+    // Hunters win only when nobody is left; score the position by the most
+    // dangerous fugitive.  The runner's exit route is raced against every
+    // hunter: the earliest point a hunter can reach first sets the score, and
+    // even when no cut is possible the distance to that best cut point keeps
+    // driving the hunters into position.
+    _maxHunterValue(grid, cops, fugitives) {
+      if (fugitives.length === 0) return MAX_SEARCH_WIN;
+      const copField = Pathfinding.distanceField(grid, cops);
+      let worst = -Infinity;
+      for (const fugitive of fugitives) {
+        if (grid.isExit(fugitive.x, fugitive.y)) return -MAX_SEARCH_WIN;
+        const route = this._nearestExitRoute(grid, fugitive, cops);
+        let risk = -500;
+        if (route.length > 0) {
+          let bestIndex = route.length - 1;
+          let bestSlack = Infinity;
+          for (let i = 0; i < route.length; i++) {
+            const arrival = copField.get(idOf(grid, route[i])) ?? 60;
+            const slack = arrival - (i + 1);
+            if (slack < bestSlack) {
+              bestSlack = slack;
+              bestIndex = i;
+            }
+          }
+          const guardDistance = copField.get(idOf(grid, route[bestIndex])) ?? 60;
+          risk = bestSlack <= 0
+            ? bestIndex * 10 + guardDistance * 3
+            : route.length * 10 + Math.min(bestSlack, 30) * 6 + guardDistance * 2;
+        }
+        const mobility = grid.neighbors(fugitive.x, fugitive.y)
+          .filter((cell) => !cops.some((cop) => same(cop, cell))).length;
+        // With the exit denied, closing in still matters: the hunt is only
+        // won by catching every fugitive.
+        risk += mobility * 2 - (copField.get(idOf(grid, fugitive)) ?? 40) * 2;
+        worst = Math.max(worst, risk);
+      }
+      return -worst;
+    }
+
+    _nearestExitRoute(grid, fugitive, cops) {
+      let best = [];
+      for (const exit of grid.exits) {
+        const path = Pathfinding.findPath(grid, fugitive, exit, cops);
+        if (path.length === 0) continue;
+        if (best.length === 0 || path.length < best.length) best = path;
+      }
+      return best;
+    }
+
+    _maxLegalMoves(grid, cell, blocked) {
+      const moves = [];
+      for (const next of grid.neighbors(cell.x, cell.y)) {
+        if (blocked.some((actor) => same(actor, next))) continue;
+        moves.push(next);
+      }
+      return moves;
+    }
   }
 
   class Game {
@@ -1373,10 +1800,15 @@
       this.caught = 0;
       this.escaped = 0;
       this.outcome = null;
+      this.endReason = null;
+      this.roundLimit = 0;
     }
 
     newGame(settings = this.settings) {
       this.settings = { ...settings };
+      this.settings.exits = exitCountOf(settings);
+      this.settings.limit = normalizeLimit(settings.limit, this.settings.exits);
+      this.roundLimit = this.settings.limit;
       this.playerSide = settings.side === 'fugitives' ? 'fugitives' : 'hunters';
       this.grid = new Grid();
       const spawns = MapGenerator.generate(this.grid, this.rng, this.settings);
@@ -1397,11 +1829,14 @@
       this.caught = 0;
       this.escaped = 0;
       this.outcome = null;
+      this.endReason = null;
       this.phase = 'hunters';
       return this;
     }
 
     get totalFugitives() { return this.fugitives.length; }
+
+    get hasExits() { return this.grid ? this.grid.exits.length > 0 : false; }
 
     get playerWon() {
       if (!this.outcome) return null;
@@ -1488,7 +1923,7 @@
       }
 
       if (this.activeFugitives().length === 0) {
-        this.finish();
+        this.finish('caught');
         return { kind: victim ? 'capture' : 'moved', captured: Boolean(victim), gameOver: true };
       }
 
@@ -1518,7 +1953,7 @@
       }
 
       if (this.activeFugitives().length === 0) {
-        this.finish();
+        this.finish('caught');
         return { kind: victim ? 'capture' : 'moved', captured: Boolean(victim), gameOver: true };
       }
 
@@ -1564,7 +1999,7 @@
       if (this.grid.isExit(fugitive.x, fugitive.y)) {
         fugitive.status = 'escaped';
         this.escaped += 1;
-        this.finish();
+        this.finish('escaped');
         return { kind: 'escaped', gameOver: true };
       }
 
@@ -1580,7 +2015,7 @@
 
       const ai = this.aiList[this.fugitives.indexOf(fugitive)];
       const others = this.activeFugitives().filter((other) => other !== fugitive);
-      const next = ai.chooseMove(this.grid, this.cops, fugitive, others, this.round);
+      const next = ai.chooseMove(this.grid, this.cops, fugitive, others, this.round, this.activeHunterIndex);
 
       fugitive.movedThisPhase = true;
       if (same(next, fugitive)) return { kind: 'blocked', fugitive };
@@ -1590,7 +2025,7 @@
       if (this.grid.isExit(fugitive.x, fugitive.y)) {
         fugitive.status = 'escaped';
         this.escaped += 1;
-        this.finish();
+        this.finish('escaped');
         return { kind: 'escaped', fugitive, gameOver: true };
       }
       return { kind: 'moved', fugitive };
@@ -1599,7 +2034,13 @@
     endFugitivePhase() {
       if (this.phase === 'over') return true;
       if (this.activeFugitives().length === 0) {
-        this.finish();
+        this.finish('caught');
+        return true;
+      }
+      // The clock only runs down once the last fugitive has had its move,
+      // so the hunters always get their full final round.
+      if (this.roundLimit > 0 && this.round >= this.roundLimit) {
+        this.finish('timeout');
         return true;
       }
       this.round += 1;
@@ -1607,9 +2048,10 @@
       return false;
     }
 
-    finish() {
+    finish(reason = 'caught') {
       this.phase = 'over';
-      this.outcome = this.escaped > 0 ? 'fugitives' : 'hunters';
+      this.endReason = reason;
+      this.outcome = reason === 'caught' ? 'hunters' : 'fugitives';
     }
 
     setDifficulty(difficulty) {
@@ -1640,8 +2082,19 @@
   };
 
   const FONT = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
-  const SETTINGS_KEY = 'escape-hunter-settings-v4';
-  const DEFAULT_SETTINGS = { side: 'hunters', hunters: 1, fugitives: 1, exits: 1, walls: 40, difficulty: 1 };
+  const SETTINGS_KEY = 'escape-hunter-settings-v5';
+  const LEGACY_SETTINGS_KEY = 'escape-hunter-settings-v4';
+  const DEFAULT_SETTINGS = { side: 'hunters', hunters: 1, fugitives: 1, exits: 1, limit: 0, walls: 40, difficulty: 1 };
+  const ROUND_LIMIT_CHOICES = [0, 10, 15, 20, 30, 40, 60, 80, 120, 200];
+
+  function snapLimitChoice(value) {
+    const target = Math.round(Number(value) || 0);
+    let choice = ROUND_LIMIT_CHOICES[0];
+    for (const candidate of ROUND_LIMIT_CHOICES) {
+      if (Math.abs(candidate - target) < Math.abs(choice - target)) choice = candidate;
+    }
+    return choice;
+  }
 
   function shade(hex, factor) {
     const value = parseInt(hex.slice(1), 16);
@@ -1655,19 +2108,23 @@
     const els = {
       canvas: document.getElementById('board'),
       turn: document.getElementById('turn'),
+      turnMax: document.getElementById('turn-max'),
       difficulty: document.getElementById('difficulty'),
       side: document.getElementById('side'),
       hunters: document.getElementById('hunters'),
       fugitives: document.getElementById('fugitives'),
       exits: document.getElementById('exits'),
+      limit: document.getElementById('limit'),
       walls: document.getElementById('walls'),
       wallsValue: document.getElementById('walls-value'),
       apply: document.getElementById('apply'),
       setup: document.getElementById('setup'),
       setupSummary: document.getElementById('setup-summary'),
+      setupWarning: document.getElementById('setup-warning'),
       restart: document.getElementById('restart'),
       status: document.getElementById('status'),
       tally: document.getElementById('tally'),
+      legendExit: document.getElementById('legend-exit'),
       overlay: document.getElementById('overlay'),
       card: document.getElementById('result-card'),
       eyebrow: document.getElementById('result-eyebrow'),
@@ -1705,14 +2162,28 @@
     }
 
     function readSettings() {
+      const exits = clamp(Math.round(Number(els.exits.value) || 0), 0, MAX_EXITS);
       return {
         side: els.side.value === 'fugitives' ? 'fugitives' : 'hunters',
         hunters: clamp(Number(els.hunters.value) || 1, 1, MAX_ACTORS),
         fugitives: clamp(Number(els.fugitives.value) || 1, 1, MAX_ACTORS),
-        exits: clamp(Number(els.exits.value) || 1, 1, MAX_EXITS),
+        exits,
+        limit: normalizeLimit(Number(els.limit.value), exits),
         walls: clamp(Number(els.walls.value) || 0, 0, 60),
-        difficulty: clamp(Number(els.difficulty.value) || 0, 0, 3)
+        difficulty: clamp(Number(els.difficulty.value) || 0, 0, AI.MAX)
       };
+    }
+
+    // A hunt with no exit can only end on the clock, so "No limit" is not
+    // offered while exits is 0; clearing it picks the default limit instead.
+    function syncSetupState() {
+      const exits = clamp(Math.round(Number(els.exits.value) || 0), 0, MAX_EXITS);
+      const noLimit = els.limit.querySelector('option[value="0"]');
+      if (noLimit) noLimit.disabled = exits === 0;
+      if (exits === 0 && Number(els.limit.value) === 0) {
+        els.limit.value = String(NO_EXIT_DEFAULT_LIMIT);
+      }
+      els.setupWarning.hidden = exits !== 0;
     }
 
     function applySettingsToControls(settings) {
@@ -1720,29 +2191,39 @@
       els.hunters.value = String(settings.hunters);
       els.fugitives.value = String(settings.fugitives);
       els.exits.value = String(settings.exits);
+      els.limit.value = String(snapLimitChoice(settings.limit));
       els.walls.value = String(settings.walls);
       els.wallsValue.textContent = `${settings.walls}%`;
       els.difficulty.value = String(settings.difficulty);
+      syncSetupState();
     }
 
     function updateSetupSummary() {
+      syncSetupState();
       const current = readSettings();
+      const exits = current.exits === 0
+        ? 'no exits'
+        : `${current.exits} exit${current.exits === 1 ? '' : 's'}`;
+      const limit = current.limit > 0 ? `${current.limit}-round limit` : 'no limit';
       els.setupSummary.textContent =
-        `${current.hunters}v${current.fugitives} \u00b7 ${current.exits} exit${current.exits === 1 ? '' : 's'} ` +
+        `${current.hunters}v${current.fugitives} \u00b7 ${exits} \u00b7 ${limit} ` +
         `\u00b7 ${current.walls}% walls \u00b7 you: ${current.side}`;
     }
 
     function loadSettings() {
       try {
-        const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || 'null');
+        const stored = localStorage.getItem(SETTINGS_KEY) || localStorage.getItem(LEGACY_SETTINGS_KEY);
+        const saved = JSON.parse(stored || 'null');
         if (saved && typeof saved === 'object') {
+          const exits = clamp(Math.round(Number(saved.exits) || 0), 0, MAX_EXITS);
           return {
             side: saved.side === 'fugitives' ? 'fugitives' : 'hunters',
             hunters: clamp(Number(saved.hunters) || 1, 1, MAX_ACTORS),
             fugitives: clamp(Number(saved.fugitives) || 1, 1, MAX_ACTORS),
-            exits: clamp(Number(saved.exits) || 1, 1, MAX_EXITS),
+            exits,
+            limit: normalizeLimit(saved.limit, exits),
             walls: clamp(Number(saved.walls) || 0, 0, 60),
-            difficulty: clamp(Number(saved.difficulty) || 0, 0, 3)
+            difficulty: clamp(Number(saved.difficulty) || 0, 0, AI.MAX)
           };
         }
       } catch (error) { /* storage unavailable */ }
@@ -1771,6 +2252,7 @@
     function updateHud() {
       if (!game) return;
       els.turn.textContent = String(game.round);
+      els.turnMax.textContent = game.roundLimit > 0 ? `/${game.roundLimit}` : '';
       if (game.round !== lastRound) {
         lastRound = game.round;
         popRound();
@@ -1804,7 +2286,9 @@
       els.overlay.setAttribute('aria-hidden', 'true');
       els.card.classList.remove('lose');
       els.eyebrow.classList.remove('lose');
+      els.legendExit.hidden = !game.hasExits;
       els.turn.textContent = '1';
+      els.turnMax.textContent = game.roundLimit > 0 ? `/${game.roundLimit}` : '';
       updateHud();
       syncVisuals(true);
       resizeCanvas();
@@ -2039,12 +2523,18 @@
       els.eyebrow.textContent = won ? 'YOU WIN' : 'YOU LOSE';
       els.eyebrow.classList.toggle('lose', !won);
       els.card.classList.toggle('lose', !won);
-      els.resultTitle.textContent = game.outcome === 'hunters' ? 'CAUGHT' : 'ESCAPED';
+      els.resultTitle.textContent = game.endReason === 'timeout'
+        ? "TIME'S UP"
+        : game.outcome === 'hunters' ? 'CAUGHT' : 'ESCAPED';
 
       const rounds = `${game.round} round${game.round === 1 ? '' : 's'}`;
       if (game.outcome === 'hunters') {
         els.resultMessage.textContent =
           `All ${game.totalFugitives} fugitive${game.totalFugitives === 1 ? '' : 's'} caught in ${rounds}.`;
+      } else if (game.endReason === 'timeout') {
+        els.resultMessage.textContent =
+          `No catch within the ${game.roundLimit}-round limit - ${game.caught} of ` +
+          `${game.totalFugitives} caught. The fugitives got away.`;
       } else {
         els.resultMessage.textContent =
           `A fugitive reached an exit in ${rounds} - ${game.caught} of ${game.totalFugitives} caught.`;
@@ -2105,6 +2595,7 @@
     els.hunters.addEventListener('change', updateSetupSummary);
     els.fugitives.addEventListener('change', updateSetupSummary);
     els.exits.addEventListener('change', updateSetupSummary);
+    els.limit.addEventListener('change', updateSetupSummary);
     els.side.addEventListener('change', updateSetupSummary);
 
     els.difficulty.addEventListener('change', () => {
@@ -2112,7 +2603,11 @@
       const difficulty = Number(els.difficulty.value);
       game.setDifficulty(difficulty);
       const info = DIFFICULTY[difficulty];
-      const hint = game.playerSide === 'hunters' ? info.hint : info.hunterHint;
+      let hint = info.hint;
+      if (game.playerSide !== 'hunters') hint = info.hunterHint;
+      else if (!game.hasExits) {
+        hint = difficulty === AI.MAX ? 'Fugitives play the survival line.' : 'Fugitives evade the hunters.';
+      }
       setStatus(`${game.playerSide === 'hunters' ? 'Fugitive' : 'Hunter'} AI ${info.name} - ${hint}`);
       saveSettings(readSettings());
       els.difficulty.blur();
