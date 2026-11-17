@@ -44,8 +44,8 @@ function section(title) {
   console.log('\n' + title);
 }
 
-function settings(side, hunters, fugitives, walls, difficulty = AI.NORMAL, exits = 1) {
-  return { side, hunters, fugitives, exits, walls, difficulty };
+function settings(side, hunters, fugitives, walls, difficulty = AI.NORMAL, exits = 1, limit = 0) {
+  return { side, hunters, fugitives, exits, limit, walls, difficulty };
 }
 
 // ---------------------------------------------------------------- layout ---
@@ -108,6 +108,7 @@ section('Map generation');
     settings('hunters', 3, 3, 45),
     settings('hunters', 3, 3, 50, AI.HARD, 5),
     settings('hunters', 5, 5, 60),
+    settings('hunters', 1, 1, 40, AI.NORMAL, 0, 60),
     settings('fugitives', 2, 4, 30, AI.NORMAL, 2)
   ];
   let broken = 0;
@@ -179,7 +180,7 @@ section('Fugitive AI (adversarial search)');
     { id: 'f1', x: 6, y: 3, status: 'active' }
   ];
 
-  for (const difficulty of [AI.EASY, AI.NORMAL, AI.HARD, AI.EXPERT]) {
+  for (const difficulty of [AI.EASY, AI.NORMAL, AI.HARD, AI.EXPERT, AI.MAX]) {
     const ai = new FugitiveAI(difficulty);
     const move = ai.chooseMove(grid, cops, fugitives, 0);
     const unit = move ? fugitives[move.unit] : null;
@@ -342,6 +343,31 @@ section('Game state machine');
   chaser.y = victim.y;
   caught.aiHunterStep();
   check(caught.outcome === 'hunters' && caught.playerWon === false, 'the fugitive player loses when the hunter catches it');
+
+  // No exits is legal, but the hunt must then end on the clock.
+  const noExit = new Game(makeRng(17), settings('hunters', 1, 1, 40, AI.NORMAL, 0, 0));
+  noExit.newGame();
+  check(noExit.grid.exits.length === 0 && noExit.hasExits === false, 'zero exits leaves no exit tile');
+  check(noExit.roundLimit === 60, 'a no-exit hunt gets the default 60-round limit');
+  noExit.skipHunterPhase();
+  noExit.skipFugitivePhase();
+  check(noExit.phase !== 'over' && noExit.endReason === null, 'the no-exit hunt continues before the limit');
+
+  const noExitTimed = new Game(makeRng(23), settings('hunters', 1, 1, 40, AI.NORMAL, 0, 1));
+  noExitTimed.newGame();
+  check(noExitTimed.roundLimit === 1, 'a no-exit hunt keeps an explicit limit');
+  noExitTimed.skipHunterPhase();
+  noExitTimed.skipFugitivePhase();
+  check(noExitTimed.phase === 'over' && noExitTimed.outcome === 'fugitives' && noExitTimed.endReason === 'timeout',
+    'a no-exit hunt ends in a timeout win for the fugitives');
+
+  const timed = new Game(makeRng(19), settings('hunters', 1, 1, 40, AI.EASY, 2, 1));
+  timed.newGame();
+  check(timed.roundLimit === 1, 'a round limit is stored on the game');
+  timed.skipHunterPhase();
+  timed.skipFugitivePhase();
+  check(timed.phase === 'over' && timed.endReason === 'timeout', 'the round limit ends the hunt after the fugitives act');
+  check(timed.outcome === 'fugitives' && timed.playerWon === false, 'a hunter player loses on a timeout');
 }
 
 // --------------------------------------------------------- full battles ---

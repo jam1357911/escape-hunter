@@ -8,10 +8,11 @@ A turn-based pursuit game in two forms:
   hunt.
 
 The board is **15 × 15**. In the browser build you choose whether to play as
-the **hunters** or the **fugitives**, how many of each (1–5), **1–5 exits**,
-and **0–60% walls**. Each round you pick **one** of your units to move one
-tile; the AI picks one of its units. Random mazes are always connected, so the
-chase is decided by positioning, not by a sealed-off spawn.
+the **hunters** or the **fugitives**, how many of each (1–5), **0–5 exits**,
+an optional **round limit**, and **0–60% walls**. Each round you pick **one**
+of your units to move one tile; the AI picks one of its units. Random mazes
+are always connected, so the chase is decided by positioning, not by a
+sealed-off spawn.
 
 ![Escape Hunter in the browser](docs/screenshot-web.png)
 
@@ -28,24 +29,39 @@ game is inline HTML, CSS and JavaScript.
 | **Play as** | Hunters / Fugitives | Which side you control. |
 | **Hunters** | 1–5 | Hunters in play. One of them moves each round. |
 | **Fugitives** | 1–5 | Fugitives in play. One of them moves each round. |
-| **Exits** | 1–5 | How many exit tiles are placed. Each gets a clear 3×3 doorstep. |
+| **Exits** | 0–5 | How many exit tiles are placed. Each gets a clear 3×3 doorstep. 0 means no exit at all. |
+| **Round limit** | No limit, 10–200 | Rounds allowed to catch every fugitive. If the last one is still free when they run out, the fugitives win. |
 | **Walls** | 0–60% | Wall coverage. 0% is a completely open room; 60% is a dense maze. |
-| **Difficulty** | Easy–Expert | Skill of the side the AI controls. |
+| **Difficulty** | Easy–Max | Skill of the side the AI controls. |
 
 **New hunt** (or **Restart**, or **R**) starts a fresh map with the current
 settings. Settings are remembered in `localStorage`, and `?seed=123` in the
 URL makes the map reproducible.
 
+**No exits means no escape.** Setting exits to 0 removes every exit tile, so
+the fugitives can only win by surviving. Such a hunt would never end on its
+own, so it always carries a clock: with 0 exits the game uses the default
+**60 rounds**, and "No limit" is not offered. With one or more exits the round
+limit is optional.
+
+**Round limit.** If the limit is reached with any fugitive still free, the
+hunt ends on the clock and the fugitives win — a timeout is not an escape, and
+it is reported separately. One round is one hunter action plus one fugitive
+action, so a 2v2 hunt at 30 rounds means each side gets 30 moves. The HUD shows
+`round / limit`.
+
+![A hunt with no exits and a round limit](docs/screenshot-web-no-exit.png)
+
 ### Controls
 
 | Input | Action |
 | --- | --- |
-| Arrow keys / WASD | Move the unit whose turn it is |
-| Click / tap a neighbouring tile | Move the active hunter, or the selected fugitive |
-| Click / tap a fugitive (playing as fugitives) | Select that fugitive |
-| 1–5 | Select one of your fugitives (fugitive side only) |
-| Swipe on the board | Move the active unit in that direction |
-| On-screen D-pad (narrow screens) | Move the active unit |
+| Arrow keys / WASD | Move the selected unit |
+| Click / tap a neighbouring tile | Move the selected unit there |
+| Click / tap one of your units | Select that unit |
+| 1–5 | Select one of your units |
+| Swipe on the board | Move the selected unit in that direction |
+| On-screen D-pad (narrow screens) | Move the selected unit |
 | R | New hunt |
 | Difficulty dropdown | Switch AI tier immediately |
 
@@ -68,11 +84,15 @@ The same sequence runs for both sides; only who controls each phase changes.
    step onto a hunter or onto each other.
 3. Stepping onto a fugitive captures it. A fugitive that reaches **any** exit
    escapes, and the first escape decides the hunt immediately.
+4. **Round limit.** When the limit is reached with any fugitive still free,
+   the hunt ends and the fugitives win on time.
 
 The hunt ends **immediately** when either side has won:
 
 - **CAUGHT** — every fugitive was caught. The hunters win.
 - **ESCAPED** — a fugitive reached the exit. The fugitives win.
+- **TIME'S UP** — the round limit ran out with a fugitive still free. The
+  fugitives win, even if some of them were caught earlier.
 
 The result card shows **YOU WIN** or **YOU LOSE** from your side, and the
 footer tally updates live: caught / total and escaped.
@@ -80,8 +100,9 @@ footer tally updates live: caught / total and escaped.
 ![Result card](docs/screenshot-web-result.png)
 
 There is no fatigue rule. At equal speed a perfect evader can keep circling, so
-a hunt can run long: hunters win by cutting off the exit and using dead ends.
-If a chase stalls, **New hunt** (or **R**) starts a fresh map.
+a hunt without a limit can run very long: hunters win by cutting off the exit
+and using dead ends. Set a **round limit** to force a finish, or start a fresh
+map with **New hunt** (or **R**).
 
 ## Tuning the odds
 
@@ -95,6 +116,8 @@ Some starting points:
   exit while the AI hunter is busy.
 - **Fugitive, 1 vs 3, 30%** — one hunter, three fugitives and an open map: a
   good place to practise dodging.
+- **Hunter, 1 vs 1, no exits, 60 rounds** — a pure survival clock: the
+  fugitive wins by lasting, the hunter by cornering it before time runs out.
 
 More walls means more dead ends (good for hunters) but also more hiding
 routes. Fewer walls favours the fugitives; 0% is a pure open-field chase.
@@ -142,6 +165,7 @@ Difficulty is the search depth:
 | **Normal** | 2 plies | sees the immediate answer |
 | **Hard** | 3 plies | sees several moves ahead |
 | **Expert** | 4 plies | plans further ahead with more pruning |
+| **Max** | 6 plies | deepest search; slowest but strongest |
 
 The search controls the AI fugitives when you play as the hunters, and the AI
 hunters when you play as the fugitives. The Godot port keeps its earlier
@@ -177,6 +201,7 @@ escape-hunter/
 ├── docs/
 │   ├── screenshot-web.png
 │   ├── screenshot-web-fugitive.png
+│   ├── screenshot-web-no-exit.png
 │   ├── screenshot-web-result.png
 │   └── screenshot.png
 ├── scenes/
@@ -220,12 +245,12 @@ Browser build (Node 18+, no packages):
 node tests/web_smoke_test.js
 ```
 
-The browser suite checks layout parsing, A* and BFS behaviour, 225 generated
-maps across wall densities (including 0%), exit counts with their open 3×3
-doorsteps, side selection and free unit choice, both adversarial AI
-controllers, the capture/escape rules, and 60 scripted battles from both sides
-(most resolve; hunts can legitimately run long now that there is no fatigue
-rule).
+The browser suite checks layout parsing, A* and BFS behaviour, 250 generated
+maps across wall densities (including 0%), exit counts from 0 to 5 with their
+open 3×3 doorsteps, round limits, side selection and free unit choice, both
+adversarial AI controllers, the capture/escape/timeout rules, and 60 scripted
+battles from both sides (most resolve; hunts can legitimately run long now
+that there is no fatigue rule).
 
 Godot build:
 

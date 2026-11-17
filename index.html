@@ -112,6 +112,12 @@
     font-variant-numeric: tabular-nums;
   }
 
+  .turn .turn-max {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+  }
+
   .select { position: relative; }
 
   select, button {
@@ -266,6 +272,14 @@
     font-size: 11.5px;
     color: var(--muted);
     white-space: nowrap;
+  }
+
+  .setup-warning {
+    flex: 1 1 100%;
+    margin: 0;
+    font-size: 11.5px;
+    line-height: 1.45;
+    color: var(--amber);
   }
 
   .board-wrap {
@@ -525,7 +539,7 @@
       <div class="controls">
         <div class="turn" title="Round counter">
           <span class="label">ROUND</span>
-          <span class="value" id="turn">1</span>
+          <span class="value"><span id="turn">1</span><span class="turn-max" id="turn-max"></span></span>
         </div>
         <div class="select">
           <label class="sr-only" for="difficulty">Fugitive difficulty</label>
@@ -534,6 +548,7 @@
             <option value="1" selected>Normal</option>
             <option value="2">Hard</option>
             <option value="3">Expert</option>
+            <option value="4">Max</option>
           </select>
           <span class="chev" aria-hidden="true"></span>
         </div>
@@ -591,11 +606,31 @@
           <div class="select compact">
             <label class="sr-only" for="exits">Number of exits</label>
             <select id="exits" title="Number of exits">
+              <option value="0">0 (none)</option>
               <option value="1" selected>1</option>
               <option value="2">2</option>
               <option value="3">3</option>
               <option value="4">4</option>
               <option value="5">5</option>
+            </select>
+            <span class="chev" aria-hidden="true"></span>
+          </div>
+        </div>
+        <div class="field">
+          <span>Round limit</span>
+          <div class="select compact">
+            <label class="sr-only" for="limit">Round limit</label>
+            <select id="limit" title="Rounds to catch every fugitive before they win">
+              <option value="0">No limit</option>
+              <option value="10">10</option>
+              <option value="15">15</option>
+              <option value="20">20</option>
+              <option value="30">30</option>
+              <option value="40">40</option>
+              <option value="60">60</option>
+              <option value="80">80</option>
+              <option value="120">120</option>
+              <option value="200">200</option>
             </select>
             <span class="chev" aria-hidden="true"></span>
           </div>
@@ -606,6 +641,7 @@
         </div>
         <button id="apply" type="button" title="Start a hunt with these settings">New hunt</button>
         <p class="setup-hint">Changes apply to the next hunt.</p>
+        <p class="setup-warning" id="setup-warning" hidden>No exits: every fugitive must be caught within the round limit, or the fugitives win.</p>
       </div>
     </details>
 
@@ -628,7 +664,7 @@
       <p class="legend" aria-label="Legend">
         <span class="item"><span class="swatch hunter">H</span>Hunter</span>
         <span class="item"><span class="swatch fugitive">F</span>Fugitive</span>
-        <span class="item"><span class="swatch exit">E</span>Exit</span>
+        <span class="item" id="legend-exit"><span class="swatch exit">E</span>Exit</span>
       </p>
     </footer>
   </div>
@@ -655,17 +691,21 @@
   const ROWS = 15;
   const TILE = { WALL: 0, FLOOR: 1, EXIT: 2 };
   const DIRS = [[0, -1], [1, 0], [0, 1], [-1, 0]]; // up, right, down, left
-  const AI = { EASY: 0, NORMAL: 1, HARD: 2, EXPERT: 3 };
+  const AI = { EASY: 0, NORMAL: 1, HARD: 2, EXPERT: 3, MAX: 4 };
   const DIFFICULTY = [
     { name: 'Easy', hint: 'Looks one move ahead, with a little randomness.', hunterHint: 'Hunters look one move ahead, with a little randomness.' },
     { name: 'Normal', hint: 'Searches two moves ahead.', hunterHint: 'Hunters search two moves ahead.' },
     { name: 'Hard', hint: 'Searches three moves ahead.', hunterHint: 'Hunters search three moves ahead.' },
-    { name: 'Expert', hint: 'Searches four moves ahead with alpha-beta pruning.', hunterHint: 'Hunters search four moves ahead with alpha-beta pruning.' }
+    { name: 'Expert', hint: 'Searches four moves ahead with alpha-beta pruning.', hunterHint: 'Hunters search four moves ahead with alpha-beta pruning.' },
+    { name: 'Max', hint: 'Searches six moves ahead with alpha-beta pruning.', hunterHint: 'Hunters search six moves ahead with alpha-beta pruning.' }
   ];
 
   // Rounds until the AI side stops dodging and commits (fugitive AI only).
   const MAX_ACTORS = 5;
   const MAX_EXITS = 5;
+  const MAX_ROUND_LIMIT = 1000;
+  const NO_EXIT_DEFAULT_LIMIT = 60;
+  const ROUND_LIMIT_CHOICES = [0, 10, 15, 20, 30, 40, 60, 80, 120, 200];
 
   const TAU = Math.PI * 2;
   const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
@@ -674,6 +714,15 @@
   const manhattan = (a, b) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
   const chebyshev = (a, b) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
   const idOf = (grid, cell) => cell.y * grid.w + cell.x;
+
+  // 0 exits is legal; unlike the actor counts it must not fall back to 1.
+  const exitCountOf = (settings) =>
+    clamp(Math.round(Number(settings && settings.exits) || 0), 0, MAX_EXITS);
+
+  function normalizeLimit(limit, exits) {
+    const value = clamp(Math.round(Number(limit) || 0), 0, MAX_ROUND_LIMIT);
+    return exits === 0 && value === 0 ? NO_EXIT_DEFAULT_LIMIT : value;
+  }
 
   function makeRng(seed) {
     let state = seed >>> 0;
@@ -949,7 +998,7 @@
     static _isPlayable(grid, settings) {
       const open = grid.walkableCells();
       const actors = settings.hunters + settings.fugitives;
-      const exits = clamp(Number(settings.exits) || 1, 1, MAX_EXITS);
+      const exits = exitCountOf(settings);
       if (open.length < Math.max(MapGenerator.MIN_OPEN_CELLS, actors + exits + 6)) return false;
 
       const seen = new Set([idOf(grid, open[0])]);
@@ -969,7 +1018,7 @@
     static _placeActors(grid, rng, settings) {
       const open = grid.walkableCells();
       const total = settings.hunters + settings.fugitives;
-      const exitCount = clamp(Number(settings.exits) || 1, 1, MAX_EXITS);
+      const exitCount = exitCountOf(settings);
       if (open.length < total + exitCount + 1) return null;
 
       const exits = MapGenerator._placeExits(grid, open, exitCount, rng);
@@ -994,6 +1043,7 @@
     }
 
     static _placeExits(grid, open, count, rng) {
+      if (count <= 0) return [];
       const exits = [];
       const used = new Set();
       // Keep exits one cell away from the border so the whole 3x3 pocket
@@ -1077,7 +1127,7 @@
 
     static _fallback(grid, settings) {
       grid.reset();
-      const count = clamp(Number(settings.exits) || 1, 1, MAX_EXITS);
+      const count = exitCountOf(settings);
       for (let index = 0; index < count; index++) {
         grid.setTile(3 + index * 2, grid.h - 3, TILE.EXIT);
       }
@@ -1106,7 +1156,7 @@
       this.side = side; // 'hunters' or 'fugitives'
       this.difficulty = difficulty;
       this.random = random;
-      this.depths = [1, 2, 3, 4];
+      this.depths = [1, 2, 3, 4, 6];
       this.branchLimit = 10;
       this.maxNodes = 50000;
       this.nodes = 0;
@@ -1381,10 +1431,15 @@
       this.caught = 0;
       this.escaped = 0;
       this.outcome = null;
+      this.roundLimit = 0;
+      this.endReason = null;
     }
 
     newGame(settings = this.settings) {
       this.settings = { ...settings };
+      this.settings.exits = exitCountOf(settings);
+      this.settings.limit = normalizeLimit(settings.limit, this.settings.exits);
+      this.roundLimit = this.settings.limit;
       this.playerSide = settings.side === 'fugitives' ? 'fugitives' : 'hunters';
       this.grid = new Grid();
       const spawns = MapGenerator.generate(this.grid, this.rng, this.settings);
@@ -1401,12 +1456,15 @@
       this.caught = 0;
       this.escaped = 0;
       this.outcome = null;
+      this.endReason = null;
       this.phase = 'hunters';
       this.beginHunterPhase();
       return this;
     }
 
     get totalFugitives() { return this.fugitives.length; }
+
+    get hasExits() { return this.grid ? this.grid.exits.length > 0 : false; }
 
     get playerWon() {
       if (!this.outcome) return null;
@@ -1541,8 +1599,14 @@
       if (this.grid.isExit(target.x, target.y)) {
         fugitive.status = 'escaped';
         this.escaped += 1;
-        this.finish();
+        this.finish('escaped');
         return { kind: 'escaped', gameOver: true };
+      }
+      // The clock only runs down after the fugitives have acted, so the
+      // hunters always get their full final round.
+      if (this.roundLimit > 0 && this.round >= this.roundLimit) {
+        this.finish('timeout');
+        return { kind: 'timeout', gameOver: true };
       }
       this.round += 1;
       this.beginHunterPhase();
@@ -1554,10 +1618,13 @@
     }
 
     skipFugitivePhase() {
-      if (this.phase === 'fugitives') {
-        this.round += 1;
-        this.beginHunterPhase();
+      if (this.phase !== 'fugitives') return;
+      if (this.roundLimit > 0 && this.round >= this.roundLimit) {
+        this.finish('timeout');
+        return;
       }
+      this.round += 1;
+      this.beginHunterPhase();
     }
 
     aiHunterStep() {
@@ -1582,29 +1649,27 @@
     aiFugitiveStep() {
       if (this.phase !== 'fugitives' || this.playerSide !== 'hunters') return { kind: 'ignored' };
       if (!this.canAnyFugitiveMove()) {
-        this.round += 1;
-        this.beginHunterPhase();
+        this.skipFugitivePhase();
         return { kind: 'skipped' };
       }
       const active = this.activeFugitives();
       const choice = this.fugitiveAI.chooseMove(this.grid, this.cops, active, this.round);
       if (!choice) {
-        this.round += 1;
-        this.beginHunterPhase();
+        this.skipFugitivePhase();
         return { kind: 'skipped' };
       }
       const fugitive = active[choice.unit];
       if (!fugitive) {
-        this.round += 1;
-        this.beginHunterPhase();
+        this.skipFugitivePhase();
         return { kind: 'skipped' };
       }
       return this._applyFugitiveMove(fugitive, { x: choice.x, y: choice.y });
     }
 
-    finish() {
+    finish(reason = 'caught') {
       this.phase = 'over';
-      this.outcome = this.escaped > 0 ? 'fugitives' : 'hunters';
+      this.endReason = reason;
+      this.outcome = reason === 'caught' ? 'hunters' : 'fugitives';
     }
 
     setDifficulty(difficulty) {
@@ -1636,7 +1701,16 @@
 
   const FONT = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
   const SETTINGS_KEY = 'escape-hunter-settings-v4';
-  const DEFAULT_SETTINGS = { side: 'hunters', hunters: 1, fugitives: 1, exits: 1, walls: 40, difficulty: 1 };
+  const DEFAULT_SETTINGS = { side: 'hunters', hunters: 1, fugitives: 1, exits: 1, limit: 0, walls: 40, difficulty: 1 };
+
+  function snapLimitChoice(value) {
+    const numeric = clamp(Math.round(Number(value) || 0), 0, MAX_ROUND_LIMIT);
+    let choice = ROUND_LIMIT_CHOICES[0];
+    for (const candidate of ROUND_LIMIT_CHOICES) {
+      if (candidate <= numeric) choice = candidate;
+    }
+    return choice;
+  }
 
   function shade(hex, factor) {
     const value = parseInt(hex.slice(1), 16);
@@ -1655,6 +1729,10 @@
       hunters: document.getElementById('hunters'),
       fugitives: document.getElementById('fugitives'),
       exits: document.getElementById('exits'),
+      limit: document.getElementById('limit'),
+      turnMax: document.getElementById('turn-max'),
+      setupWarning: document.getElementById('setup-warning'),
+      legendExit: document.getElementById('legend-exit'),
       walls: document.getElementById('walls'),
       wallsValue: document.getElementById('walls-value'),
       apply: document.getElementById('apply'),
@@ -1700,14 +1778,28 @@
     }
 
     function readSettings() {
+      const exits = exitCountOf({ exits: els.exits.value });
       return {
         side: els.side.value === 'fugitives' ? 'fugitives' : 'hunters',
         hunters: clamp(Number(els.hunters.value) || 1, 1, MAX_ACTORS),
         fugitives: clamp(Number(els.fugitives.value) || 1, 1, MAX_ACTORS),
-        exits: clamp(Number(els.exits.value) || 1, 1, MAX_EXITS),
+        exits,
+        limit: normalizeLimit(Number(els.limit.value), exits),
         walls: clamp(Number(els.walls.value) || 0, 0, 60),
-        difficulty: clamp(Number(els.difficulty.value) || 0, 0, 3)
+        difficulty: clamp(Number(els.difficulty.value) || 0, 0, AI.MAX)
       };
+    }
+
+    // A hunt with no exit can only end on the clock, so "No limit" is not
+    // offered while exits is 0; clearing it picks the default limit instead.
+    function syncSetupState() {
+      const exits = exitCountOf({ exits: els.exits.value });
+      const noLimit = els.limit.querySelector('option[value="0"]');
+      if (noLimit) noLimit.disabled = exits === 0;
+      if (exits === 0 && Number(els.limit.value) === 0) {
+        els.limit.value = String(NO_EXIT_DEFAULT_LIMIT);
+      }
+      els.setupWarning.hidden = exits !== 0;
     }
 
     function applySettingsToControls(settings) {
@@ -1715,15 +1807,22 @@
       els.hunters.value = String(settings.hunters);
       els.fugitives.value = String(settings.fugitives);
       els.exits.value = String(settings.exits);
+      els.limit.value = String(snapLimitChoice(settings.limit));
       els.walls.value = String(settings.walls);
       els.wallsValue.textContent = `${settings.walls}%`;
       els.difficulty.value = String(settings.difficulty);
+      syncSetupState();
     }
 
     function updateSetupSummary() {
+      syncSetupState();
       const current = readSettings();
+      const exits = current.exits === 0
+        ? 'no exits'
+        : `${current.exits} exit${current.exits === 1 ? '' : 's'}`;
+      const limit = current.limit > 0 ? `${current.limit}-round limit` : 'no limit';
       els.setupSummary.textContent =
-        `${current.hunters}v${current.fugitives} \u00b7 ${current.exits} exit${current.exits === 1 ? '' : 's'} ` +
+        `${current.hunters}v${current.fugitives} \u00b7 ${exits} \u00b7 ${limit} ` +
         `\u00b7 ${current.walls}% walls \u00b7 you: ${current.side}`;
     }
 
@@ -1731,13 +1830,15 @@
       try {
         const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || 'null');
         if (saved && typeof saved === 'object') {
+          const exits = exitCountOf(saved);
           return {
             side: saved.side === 'fugitives' ? 'fugitives' : 'hunters',
             hunters: clamp(Number(saved.hunters) || 1, 1, MAX_ACTORS),
             fugitives: clamp(Number(saved.fugitives) || 1, 1, MAX_ACTORS),
-            exits: clamp(Number(saved.exits) || 1, 1, MAX_EXITS),
+            exits,
+            limit: normalizeLimit(saved.limit, exits),
             walls: clamp(Number(saved.walls) || 0, 0, 60),
-            difficulty: clamp(Number(saved.difficulty) || 0, 0, 3)
+            difficulty: clamp(Number(saved.difficulty) || 0, 0, AI.MAX)
           };
         }
       } catch (error) { /* storage unavailable */ }
@@ -1766,6 +1867,8 @@
     function updateHud() {
       if (!game) return;
       els.turn.textContent = String(game.round);
+      els.turnMax.textContent = game.roundLimit > 0 ? `/${game.roundLimit}` : '';
+      els.legendExit.hidden = !game.hasExits;
       if (game.round !== lastRound) {
         lastRound = game.round;
         popRound();
@@ -2004,12 +2107,17 @@
       els.eyebrow.textContent = won ? 'YOU WIN' : 'YOU LOSE';
       els.eyebrow.classList.toggle('lose', !won);
       els.card.classList.toggle('lose', !won);
-      els.resultTitle.textContent = game.outcome === 'hunters' ? 'CAUGHT' : 'ESCAPED';
+      els.resultTitle.textContent = game.outcome === 'hunters'
+        ? 'CAUGHT'
+        : (game.endReason === 'timeout' ? "TIME'S UP" : 'ESCAPED');
 
       const rounds = `${game.round} round${game.round === 1 ? '' : 's'}`;
       if (game.outcome === 'hunters') {
         els.resultMessage.textContent =
           `All ${game.totalFugitives} fugitive${game.totalFugitives === 1 ? '' : 's'} caught in ${rounds}.`;
+      } else if (game.endReason === 'timeout') {
+        els.resultMessage.textContent =
+          `No catch within the ${game.roundLimit}-round limit - ${game.caught} of ${game.totalFugitives} caught.`;
       } else {
         els.resultMessage.textContent =
           `A fugitive reached an exit in ${rounds} - ${game.caught} of ${game.totalFugitives} caught.`;
@@ -2072,6 +2180,7 @@
     els.hunters.addEventListener('change', updateSetupSummary);
     els.fugitives.addEventListener('change', updateSetupSummary);
     els.exits.addEventListener('change', updateSetupSummary);
+    els.limit.addEventListener('change', updateSetupSummary);
     els.side.addEventListener('change', updateSetupSummary);
 
     els.difficulty.addEventListener('change', () => {
