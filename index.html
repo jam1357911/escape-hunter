@@ -192,6 +192,8 @@
   }
 
   .setup > summary .setup-summary {
+    flex: 1 1 auto;
+    min-width: 0;
     color: var(--muted);
     font-size: 12.5px;
   }
@@ -291,7 +293,7 @@
 
   .touchpad {
     display: none;
-    grid-template-columns: repeat(3, 60px);
+    grid-template-columns: repeat(4, 60px);
     grid-template-rows: repeat(3, 60px);
     gap: 8px;
     justify-content: center;
@@ -319,6 +321,25 @@
   .touchpad .left { grid-area: 2 / 1; }
   .touchpad .down { grid-area: 3 / 2; }
   .touchpad .right { grid-area: 2 / 3; }
+
+  .touchpad .switch-unit {
+    grid-area: 2 / 4;
+    gap: 2px;
+    color: var(--accent);
+    border-color: rgba(90, 209, 255, .42);
+    background: rgba(26, 48, 70, .85);
+  }
+
+  .touchpad .switch-unit span {
+    font-size: 19px;
+    line-height: 1;
+  }
+
+  .touchpad .switch-unit small {
+    font-size: 8px;
+    letter-spacing: .08em;
+    color: var(--muted);
+  }
 
   .board-frame {
     position: relative;
@@ -500,6 +521,10 @@
     .select select { width: 100%; padding-left: 14px; padding-right: 34px; }
     .setup { gap: 0; }
     .setup > summary { display: flex; }
+    .setup > summary .setup-summary {
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
     .setup-body { gap: 10px; padding: 10px 14px 12px; }
     .field { flex: 1 1 90px; }
     .walls-field { flex: 1 1 100%; max-width: none; }
@@ -507,13 +532,13 @@
     .setup-hint { display: none; }
     .board-wrap { flex: 0 0 auto; min-height: 0; }
     .board-frame { width: min(100%, 360px); }
-    .touchpad { display: grid; grid-template-columns: repeat(3, 56px); grid-template-rows: repeat(3, 56px); }
+    .touchpad { display: grid; grid-template-columns: repeat(4, 56px); grid-template-rows: repeat(3, 56px); }
     footer { font-size: 12.5px; }
     .legend { gap: 10px; }
   }
 
   @media (max-width: 420px) {
-    .touchpad { grid-template-columns: repeat(3, 52px); grid-template-rows: repeat(3, 52px); }
+    .touchpad { grid-template-columns: repeat(4, 52px); grid-template-rows: repeat(3, 52px); }
     h1 { font-size: 24px; }
   }
   @media (max-height: 560px) {
@@ -545,10 +570,11 @@
           <label class="sr-only" for="difficulty">Fugitive difficulty</label>
           <select id="difficulty" title="Fugitive difficulty">
             <option value="0">Easy</option>
-            <option value="1" selected>Normal</option>
+            <option value="1">Normal</option>
             <option value="2">Hard</option>
             <option value="3">Expert</option>
             <option value="4">Max</option>
+            <option value="5" selected>Nightmare</option>
           </select>
           <span class="chev" aria-hidden="true"></span>
         </div>
@@ -559,7 +585,7 @@
     <details class="setup" id="setup" open>
       <summary>
         <span class="setup-label">Setup</span>
-        <span class="setup-summary" id="setup-summary">1 hunter &middot; 1 fugitive &middot; 40% walls</span>
+        <span class="setup-summary" id="setup-summary">15&times;15 &middot; 1v1 &middot; 40% walls</span>
       </summary>
       <div class="setup-body">
         <div class="field">
@@ -569,6 +595,21 @@
             <select id="side" title="Which side you control">
               <option value="hunters" selected>Hunters</option>
               <option value="fugitives">Fugitives</option>
+            </select>
+            <span class="chev" aria-hidden="true"></span>
+          </div>
+        </div>
+        <div class="field">
+          <span>Map</span>
+          <div class="select compact">
+            <label class="sr-only" for="map-size">Map size</label>
+            <select id="map-size" title="Map size">
+              <option value="9">9 &times; 9</option>
+              <option value="11">11 &times; 11</option>
+              <option value="13">13 &times; 13</option>
+              <option value="15" selected>15 &times; 15</option>
+              <option value="17">17 &times; 17</option>
+              <option value="19">19 &times; 19</option>
             </select>
             <span class="chev" aria-hidden="true"></span>
           </div>
@@ -656,6 +697,9 @@
       <button class="left" type="button" data-move="left" aria-label="Move left">&#9664;</button>
       <button class="down" type="button" data-move="down" aria-label="Move down">&#9660;</button>
       <button class="right" type="button" data-move="right" aria-label="Move right">&#9654;</button>
+      <button class="switch-unit" id="switch-unit" type="button" aria-label="Switch the unit to move">
+        <span aria-hidden="true">&#8644;</span><small>SWAP</small>
+      </button>
     </div>
 
     <footer>
@@ -691,13 +735,14 @@
   const ROWS = 15;
   const TILE = { WALL: 0, FLOOR: 1, EXIT: 2 };
   const DIRS = [[0, -1], [1, 0], [0, 1], [-1, 0]]; // up, right, down, left
-  const AI = { EASY: 0, NORMAL: 1, HARD: 2, EXPERT: 3, MAX: 4 };
+  const AI = { EASY: 0, NORMAL: 1, HARD: 2, EXPERT: 3, MAX: 4, NIGHTMARE: 5 };
   const DIFFICULTY = [
     { name: 'Easy', hint: 'Looks one move ahead, with a little randomness.', hunterHint: 'Hunters look one move ahead, with a little randomness.' },
     { name: 'Normal', hint: 'Searches two moves ahead.', hunterHint: 'Hunters search two moves ahead.' },
     { name: 'Hard', hint: 'Searches three moves ahead.', hunterHint: 'Hunters search three moves ahead.' },
     { name: 'Expert', hint: 'Searches four moves ahead with alpha-beta pruning.', hunterHint: 'Hunters search four moves ahead with alpha-beta pruning.' },
-    { name: 'Max', hint: 'Searches six moves ahead with alpha-beta pruning.', hunterHint: 'Hunters search six moves ahead with alpha-beta pruning.' }
+    { name: 'Max', hint: 'Searches six moves ahead with alpha-beta pruning.', hunterHint: 'Hunters search six moves ahead with alpha-beta pruning.' },
+    { name: 'Nightmare', hint: 'Searches eight moves ahead; the strongest search.', hunterHint: 'Hunters search eight moves ahead; the strongest search.' }
   ];
 
   // Rounds until the AI side stops dodging and commits (fugitive AI only).
@@ -706,6 +751,7 @@
   const MAX_ROUND_LIMIT = 1000;
   const NO_EXIT_DEFAULT_LIMIT = 60;
   const ROUND_LIMIT_CHOICES = [0, 10, 15, 20, 30, 40, 60, 80, 120, 200];
+  const MAP_SIZES = [9, 11, 13, 15, 17, 19];
 
   const TAU = Math.PI * 2;
   const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
@@ -714,6 +760,15 @@
   const manhattan = (a, b) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
   const chebyshev = (a, b) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
   const idOf = (grid, cell) => cell.y * grid.w + cell.x;
+
+  function snapMapSize(value) {
+    const numeric = clamp(Math.round(Number(value) || 15), 9, 19);
+    let best = MAP_SIZES[0];
+    for (const candidate of MAP_SIZES) {
+      if (Math.abs(candidate - numeric) < Math.abs(best - numeric)) best = candidate;
+    }
+    return best;
+  }
 
   // 0 exits is legal; unlike the actor counts it must not fall back to 1.
   const exitCountOf = (settings) =>
@@ -999,7 +1054,9 @@
       const open = grid.walkableCells();
       const actors = settings.hunters + settings.fugitives;
       const exits = exitCountOf(settings);
-      if (open.length < Math.max(MapGenerator.MIN_OPEN_CELLS, actors + exits + 6)) return false;
+      const area = Math.max(1, (grid.w - 2) * (grid.h - 2));
+      const floor = Math.max(actors + exits + 6, Math.floor(area * 0.3));
+      if (open.length < floor) return false;
 
       const seen = new Set([idOf(grid, open[0])]);
       const frontier = [open[0]];
@@ -1129,7 +1186,10 @@
       grid.reset();
       const count = exitCountOf(settings);
       for (let index = 0; index < count; index++) {
-        grid.setTile(3 + index * 2, grid.h - 3, TILE.EXIT);
+        const x = count === 1
+          ? Math.floor(grid.w / 2)
+          : clamp(Math.round(2 + (index * (grid.w - 5)) / (count - 1)), 2, grid.w - 3);
+        grid.setTile(x, Math.max(2, grid.h - 3), TILE.EXIT);
       }
       const cops = [];
       const fugitives = [];
@@ -1156,10 +1216,13 @@
       this.side = side; // 'hunters' or 'fugitives'
       this.difficulty = difficulty;
       this.random = random;
-      this.depths = [1, 2, 3, 4, 6];
-      this.branchLimit = 10;
-      this.maxNodes = 50000;
+      this.depths = [1, 2, 3, 4, 6, 8];
+      this.branchLimit = 12;
+      this.maxNodes = 60000;
       this.nodes = 0;
+      this.exitDistance = grid.exits.length
+        ? Pathfinding.distanceField(grid, grid.exits)
+        : new Map();
     }
 
     bestMove(state) {
@@ -1294,11 +1357,11 @@
       }
 
       if (this.grid.isExit(move.x, move.y)) return 10000;
-      let nearestExit = Infinity;
-      for (const exit of this.grid.exits) nearestExit = Math.min(nearestExit, manhattan(move, exit));
+      const nearestExit = this._exitDistanceAt(move.x, move.y);
       let nearestHunter = Infinity;
       for (const cop of state.cops) nearestHunter = Math.min(nearestHunter, manhattan(move, cop));
-      return 1000 - nearestExit * 10 + nearestHunter * 2;
+      const exitPenalty = Number.isFinite(nearestExit) ? nearestExit * 10 : 0;
+      return 1000 - exitPenalty + nearestHunter * 2;
     }
 
     _apply(state, move) {
@@ -1332,16 +1395,21 @@
       let minExit = Infinity;
       let maxSafety = -Infinity;
       let mobility = 0;
+      let threats = 0;
+      let deadEnds = 0;
 
       for (const fugitive of active) {
-        let nearestExit = Infinity;
-        for (const exit of this.grid.exits) nearestExit = Math.min(nearestExit, manhattan(fugitive, exit));
+        const nearestExit = this._exitDistanceAt(fugitive.x, fugitive.y);
         minExit = Math.min(minExit, nearestExit);
 
         let nearestHunter = Infinity;
         for (const cop of state.cops) nearestHunter = Math.min(nearestHunter, manhattan(fugitive, cop));
         maxSafety = Math.max(maxSafety, nearestHunter);
-        mobility += this.grid.neighbors(fugitive.x, fugitive.y).length;
+        if (nearestHunter <= 1) threats += 1;
+
+        const moves = this.grid.neighbors(fugitive.x, fugitive.y).length;
+        mobility += moves;
+        if (moves <= 1) deadEnds += 1;
       }
 
       if (!Number.isFinite(minExit)) minExit = 0;
@@ -1352,10 +1420,17 @@
         -minExit * exitWeight +
         maxSafety * 6 +
         mobility * 0.4 +
-        active.length * 30;
+        active.length * 30 -
+        threats * 250 -
+        deadEnds * 80;
 
       if (this.side === 'hunters') score = -score;
       return score;
+    }
+
+    _exitDistanceAt(x, y) {
+      const distance = this.exitDistance.get(y * this.grid.w + x);
+      return distance === undefined ? Infinity : distance;
     }
   }
 
@@ -1441,7 +1516,7 @@
       this.settings.limit = normalizeLimit(settings.limit, this.settings.exits);
       this.roundLimit = this.settings.limit;
       this.playerSide = settings.side === 'fugitives' ? 'fugitives' : 'hunters';
-      this.grid = new Grid();
+      this.grid = new Grid(this.settings.size, this.settings.size);
       const spawns = MapGenerator.generate(this.grid, this.rng, this.settings);
       this.cops = spawns.cops.map((cell, index) => ({ id: `c${index}`, x: cell.x, y: cell.y }));
       this.fugitives = spawns.fugitives.map((cell, index) => ({
@@ -1701,7 +1776,11 @@
 
   const FONT = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
   const SETTINGS_KEY = 'escape-hunter-settings-v4';
-  const DEFAULT_SETTINGS = { side: 'hunters', hunters: 1, fugitives: 1, exits: 1, limit: 0, walls: 40, difficulty: 1 };
+  const SETTINGS_FLOOR_KEY = 'escape-hunter-ai-floor-v1';
+  const DEFAULT_SETTINGS = {
+    side: 'hunters', hunters: 1, fugitives: 1, exits: 1, limit: 0,
+    size: 15, walls: 40, difficulty: 5
+  };
 
   function snapLimitChoice(value) {
     const numeric = clamp(Math.round(Number(value) || 0), 0, MAX_ROUND_LIMIT);
@@ -1726,6 +1805,7 @@
       turn: document.getElementById('turn'),
       difficulty: document.getElementById('difficulty'),
       side: document.getElementById('side'),
+      mapSize: document.getElementById('map-size'),
       hunters: document.getElementById('hunters'),
       fugitives: document.getElementById('fugitives'),
       exits: document.getElementById('exits'),
@@ -1746,7 +1826,8 @@
       eyebrow: document.getElementById('result-eyebrow'),
       resultTitle: document.getElementById('result-title'),
       resultMessage: document.getElementById('result-message'),
-      again: document.getElementById('again')
+      again: document.getElementById('again'),
+      switchUnit: document.getElementById('switch-unit')
     };
     const ctx = els.canvas.getContext('2d');
 
@@ -1785,8 +1866,9 @@
         fugitives: clamp(Number(els.fugitives.value) || 1, 1, MAX_ACTORS),
         exits,
         limit: normalizeLimit(Number(els.limit.value), exits),
+        size: snapMapSize(els.mapSize.value),
         walls: clamp(Number(els.walls.value) || 0, 0, 60),
-        difficulty: clamp(Number(els.difficulty.value) || 0, 0, AI.MAX)
+        difficulty: clamp(Number(els.difficulty.value) || 0, 0, AI.NIGHTMARE)
       };
     }
 
@@ -1804,6 +1886,7 @@
 
     function applySettingsToControls(settings) {
       els.side.value = settings.side;
+      els.mapSize.value = String(settings.size);
       els.hunters.value = String(settings.hunters);
       els.fugitives.value = String(settings.fugitives);
       els.exits.value = String(settings.exits);
@@ -1822,27 +1905,40 @@
         : `${current.exits} exit${current.exits === 1 ? '' : 's'}`;
       const limit = current.limit > 0 ? `${current.limit}-round limit` : 'no limit';
       els.setupSummary.textContent =
-        `${current.hunters}v${current.fugitives} \u00b7 ${exits} \u00b7 ${limit} ` +
-        `\u00b7 ${current.walls}% walls \u00b7 you: ${current.side}`;
+        `${current.size}\u00d7${current.size} \u00b7 ${current.hunters}v${current.fugitives} ` +
+        `\u00b7 ${exits} \u00b7 ${limit} \u00b7 ${current.walls}% walls \u00b7 you: ${current.side}`;
     }
 
     function loadSettings() {
+      let settings = { ...DEFAULT_SETTINGS };
       try {
         const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || 'null');
         if (saved && typeof saved === 'object') {
           const exits = exitCountOf(saved);
-          return {
+          settings = {
             side: saved.side === 'fugitives' ? 'fugitives' : 'hunters',
             hunters: clamp(Number(saved.hunters) || 1, 1, MAX_ACTORS),
             fugitives: clamp(Number(saved.fugitives) || 1, 1, MAX_ACTORS),
             exits,
             limit: normalizeLimit(saved.limit, exits),
+            size: snapMapSize(saved.size),
             walls: clamp(Number(saved.walls) || 0, 0, 60),
-            difficulty: clamp(Number(saved.difficulty) || 0, 0, AI.MAX)
+            difficulty: clamp(Number(saved.difficulty) || 0, 0, AI.NIGHTMARE)
           };
         }
       } catch (error) { /* storage unavailable */ }
-      return { ...DEFAULT_SETTINGS };
+
+      // One-time nudge for existing saves: the stronger search starts on
+      // Nightmare, and the player can lower it from the dropdown afterwards.
+      try {
+        if (!localStorage.getItem(SETTINGS_FLOOR_KEY)) {
+          settings.difficulty = Math.max(settings.difficulty, AI.NIGHTMARE);
+          localStorage.setItem(SETTINGS_FLOOR_KEY, '1');
+          localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+        }
+      } catch (error) { /* storage unavailable */ }
+
+      return settings;
     }
 
     function saveSettings(settings) {
@@ -2090,6 +2186,19 @@
       if (game.selectUnit(id)) updateTurnMessage();
     }
 
+    function selectNextUnit() {
+      if (!game || game.phase === 'over') return;
+      const side = game.playerSide;
+      if (game.phase !== side) return;
+      const units = (side === 'hunters' ? game.cops : game.activeFugitives())
+        .filter((unit) => game.movesFor(unit).length > 0);
+      if (units.length === 0) return;
+      const current = game.selectedUnit();
+      const index = units.indexOf(current);
+      const next = units[(index + 1) % units.length];
+      selectUnit(next.id);
+    }
+
     function scheduleResult() {
       if (!game) return;
       const myToken = token;
@@ -2181,6 +2290,7 @@
     els.fugitives.addEventListener('change', updateSetupSummary);
     els.exits.addEventListener('change', updateSetupSummary);
     els.limit.addEventListener('change', updateSetupSummary);
+    els.mapSize.addEventListener('change', updateSetupSummary);
     els.side.addEventListener('change', updateSetupSummary);
 
     els.difficulty.addEventListener('change', () => {
@@ -2200,12 +2310,17 @@
     });
 
     const padDirections = { up: [0, -1], right: [1, 0], down: [0, 1], left: [-1, 0] };
-    document.querySelectorAll('.touchpad button').forEach((button) => {
+    document.querySelectorAll('.touchpad button[data-move]').forEach((button) => {
       button.addEventListener('click', () => {
         const direction = padDirections[button.dataset.move];
         performMove(direction[0], direction[1]);
         button.blur();
       });
+    });
+
+    els.switchUnit.addEventListener('click', () => {
+      selectNextUnit();
+      els.switchUnit.blur();
     });
 
     function cellFromEvent(event) {
@@ -2215,7 +2330,7 @@
       if (!view.cell) return null;
       const x = Math.floor((px - view.ox) / view.cell);
       const y = Math.floor((py - view.oy) / view.cell);
-      if (x < 0 || y < 0 || x >= COLS || y >= ROWS) return null;
+      if (x < 0 || y < 0 || x >= game.grid.w || y >= game.grid.h) return null;
       return { x, y };
     }
 
@@ -2465,11 +2580,13 @@
       ctx.clearRect(0, 0, view.w, view.h);
 
       const pad = 4;
-      const cell = Math.min((view.w - pad * 2) / COLS, (view.h - pad * 2) / ROWS);
+      const cols = game.grid.w;
+      const rows = game.grid.h;
+      const cell = Math.min((view.w - pad * 2) / cols, (view.h - pad * 2) / rows);
       if (!(cell > 2)) return;
 
-      const boardW = cell * COLS;
-      const boardH = cell * ROWS;
+      const boardW = cell * cols;
+      const boardH = cell * rows;
       const ox = (view.w - boardW) / 2;
       const oy = (view.h - boardH) / 2;
       view.cell = cell;
@@ -2478,8 +2595,8 @@
 
       fillRound(ox, oy, boardW, boardH, 10, COLORS.bed);
 
-      for (let y = 0; y < ROWS; y++) {
-        for (let x = 0; x < COLS; x++) drawTile(x, y, cell, ox, oy);
+      for (let y = 0; y < rows; y++) {
+        for (let x = 0; x < cols; x++) drawTile(x, y, cell, ox, oy);
       }
 
       const controlled = controlledUnit();

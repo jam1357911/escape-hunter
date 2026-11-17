@@ -44,8 +44,8 @@ function section(title) {
   console.log('\n' + title);
 }
 
-function settings(side, hunters, fugitives, walls, difficulty = AI.NORMAL, exits = 1, limit = 0) {
-  return { side, hunters, fugitives, exits, limit, walls, difficulty };
+function settings(side, hunters, fugitives, walls, difficulty = AI.NORMAL, exits = 1, limit = 0, size = 15) {
+  return { side, hunters, fugitives, exits, limit, size, walls, difficulty };
 }
 
 // ---------------------------------------------------------------- layout ---
@@ -109,22 +109,26 @@ section('Map generation');
     settings('hunters', 3, 3, 50, AI.HARD, 5),
     settings('hunters', 5, 5, 60),
     settings('hunters', 1, 1, 40, AI.NORMAL, 0, 60),
+    settings('hunters', 3, 3, 60, AI.NORMAL, 2, 0, 9),
+    settings('hunters', 4, 4, 45, AI.NORMAL, 3, 30, 19),
     settings('fugitives', 2, 4, 30, AI.NORMAL, 2)
   ];
   let broken = 0;
   let generated = 0;
   let openAt0 = 0;
   let openAt60 = 0;
+  let openAt0Count = 0;
+  let openAt60Count = 0;
 
   for (const config of configs) {
     for (let seed = 0; seed < 25; seed++) {
-      const grid = new Grid(15, 15);
+      const grid = new Grid(config.size, config.size);
       const spawns = MapGenerator.generate(grid, makeRng(seed * 7919 + 13), config);
       generated += 1;
 
       const open = grid.walkableCells().length;
-      if (config.walls === 0) openAt0 += open;
-      if (config.walls === 60) openAt60 += open;
+      if (config.walls === 0) { openAt0 += open; openAt0Count += 1; }
+      if (config.walls === 60) { openAt60 += open; openAt60Count += 1; }
 
       const actors = [...spawns.cops, ...spawns.fugitives];
       const unique = new Set(actors.map((cell) => `${cell.x},${cell.y}`));
@@ -133,6 +137,7 @@ section('Map generation');
         spawns.cops.length === config.hunters &&
         spawns.fugitives.length === config.fugitives &&
         unique.size === actors.length &&
+        grid.w === config.size && grid.h === config.size &&
         grid.exits.length === config.exits &&
         uniqueExits.size === config.exits;
 
@@ -158,8 +163,9 @@ section('Map generation');
   }
 
   check(broken === 0, `${generated} maps spawn the requested actors on a connected board`);
-  check(openAt0 / 25 === 169, '0% walls leaves an open interior');
-  check(openAt0 / 25 > openAt60 / 25, 'more walls means fewer open cells');
+  check(openAt0Count > 0 && openAt0 / openAt0Count === 169, '0% walls leaves an open interior');
+  check(openAt0Count > 0 && openAt60Count > 0 && openAt0 / openAt0Count > openAt60 / openAt60Count,
+    'more walls means fewer open cells');
 }
 
 // -------------------------------------------------------------------- AI ---
@@ -180,7 +186,7 @@ section('Fugitive AI (adversarial search)');
     { id: 'f1', x: 6, y: 3, status: 'active' }
   ];
 
-  for (const difficulty of [AI.EASY, AI.NORMAL, AI.HARD, AI.EXPERT, AI.MAX]) {
+  for (const difficulty of [AI.EASY, AI.NORMAL, AI.HARD, AI.EXPERT, AI.MAX, AI.NIGHTMARE]) {
     const ai = new FugitiveAI(difficulty);
     const move = ai.chooseMove(grid, cops, fugitives, 0);
     const unit = move ? fugitives[move.unit] : null;

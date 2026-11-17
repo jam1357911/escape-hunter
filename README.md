@@ -7,12 +7,12 @@ A turn-based pursuit game in two forms:
 - **Godot 4 project** — a native port of the original 1 hunter vs 1 fugitive
   hunt.
 
-The board is **15 × 15**. In the browser build you choose whether to play as
-the **hunters** or the **fugitives**, how many of each (1–5), **0–5 exits**,
-an optional **round limit**, and **0–60% walls**. Each round you pick **one**
-of your units to move one tile; the AI picks one of its units. Random mazes
-are always connected, so the chase is decided by positioning, not by a
-sealed-off spawn.
+The board is **9 × 9 to 19 × 19** (15 × 15 by default). In the browser build
+you choose whether to play as the **hunters** or the **fugitives**, how many of
+each (1–5), **0–5 exits**, an optional **round limit**, and **0–60% walls**.
+Each round you pick **one** of your units to move one tile; the AI picks one of
+its units. Random mazes are always connected, so the chase is decided by
+positioning, not by a sealed-off spawn.
 
 ![Escape Hunter in the browser](docs/screenshot-web.png)
 
@@ -27,12 +27,13 @@ game is inline HTML, CSS and JavaScript.
 | Setting | Range | Effect |
 | --- | --- | --- |
 | **Play as** | Hunters / Fugitives | Which side you control. |
+| **Map** | 9×9–19×19 | Board size; 15×15 by default. |
 | **Hunters** | 1–5 | Hunters in play. One of them moves each round. |
 | **Fugitives** | 1–5 | Fugitives in play. One of them moves each round. |
 | **Exits** | 0–5 | How many exit tiles are placed. Each gets a clear 3×3 doorstep. 0 means no exit at all. |
 | **Round limit** | No limit, 10–200 | Rounds allowed to catch every fugitive. If the last one is still free when they run out, the fugitives win. |
 | **Walls** | 0–60% | Wall coverage. 0% is a completely open room; 60% is a dense maze. |
-| **Difficulty** | Easy–Max | Skill of the side the AI controls. |
+| **Difficulty** | Easy–Nightmare | Skill of the side the AI controls. |
 
 **New hunt** (or **Restart**, or **R**) starts a fresh map with the current
 settings. Settings are remembered in `localStorage`, and `?seed=123` in the
@@ -60,6 +61,7 @@ action, so a 2v2 hunt at 30 rounds means each side gets 30 moves. The HUD shows
 | Click / tap a neighbouring tile | Move the selected unit there |
 | Click / tap one of your units | Select that unit |
 | 1–5 | Select one of your units |
+| SWAP (touchpad, right of the arrows) | Select the next movable unit |
 | Swipe on the board | Move the selected unit in that direction |
 | On-screen D-pad (narrow screens) | Move the selected unit |
 | R | New hunt |
@@ -67,10 +69,13 @@ action, so a 2v2 hunt at 30 rounds means each side gets 30 moves. The HUD shows
 
 The unit you have selected has a cyan ring and blue dots on its legal steps.
 Click / tap any of your movable units to select it, or press **1–5**; then
-move it one tile. The selection is free — there is no forced order — but only
-one unit on your side moves per round.
+move it one tile. On phones, the **SWAP** button to the right of the arrow pad
+cycles through your movable units. The selection is free — there is no forced
+order — but only one unit on your side moves per round.
 
 ![Playing as the fugitives](docs/screenshot-web-fugitive.png)
+
+![Phone controls, with the SWAP button](docs/screenshot-mobile.png)
 
 ## How a round works
 
@@ -122,7 +127,8 @@ Some starting points:
 More walls means more dead ends (good for hunters) but also more hiding
 routes. Fewer walls favours the fugitives; 0% is a pure open-field chase.
 More exits also favours the fugitives: hunters can no longer guard a single
-door, and one escape is enough.
+door, and one escape is enough. A smaller map makes hunters close in faster;
+19×19 gives the fugitives room to run.
 
 ## Godot 4 project
 
@@ -154,8 +160,10 @@ search node is one phase of the real game:
 
 The leaf score rewards the fugitive side for being close to an exit, far from
 the nearest hunter, having open moves and keeping more fugitives alive; the
-hunter side gets the negation. Each node keeps only the ten best-ordered moves,
-and a node cap keeps a decision responsive even at 5 vs 5.
+hunter side gets the negation. Exits are measured with a BFS distance field,
+and the score adds penalties for fugitives under immediate threat or stuck in
+a dead end. Each node keeps only the twelve best-ordered moves, and a node cap
+keeps a decision responsive even at 5 vs 5.
 
 Difficulty is the search depth:
 
@@ -166,10 +174,13 @@ Difficulty is the search depth:
 | **Hard** | 3 plies | sees several moves ahead |
 | **Expert** | 4 plies | plans further ahead with more pruning |
 | **Max** | 6 plies | deepest search; slowest but strongest |
+| **Nightmare** | 8 plies | the strongest line the search can find |
 
-The search controls the AI fugitives when you play as the hunters, and the AI
-hunters when you play as the fugitives. The Godot port keeps its earlier
-heuristic AI (BFS/A* plus a short lookahead) rather than the search.
+The AI starts on **Nightmare** (a saved lower setting is nudged to Nightmare
+once); lower it from the dropdown if you want an easier hunt. The search
+controls the AI fugitives when you play as the hunters, and the AI hunters
+when you play as the fugitives. The Godot port keeps its earlier heuristic AI
+(BFS/A* plus a short lookahead) rather than the search.
 
 ## Map generation
 
@@ -203,6 +214,7 @@ escape-hunter/
 │   ├── screenshot-web-fugitive.png
 │   ├── screenshot-web-no-exit.png
 │   ├── screenshot-web-result.png
+│   ├── screenshot-mobile.png
 │   └── screenshot.png
 ├── scenes/
 │   └── main.tscn            # Godot layout only: header, board frame, footer, modal
@@ -245,12 +257,12 @@ Browser build (Node 18+, no packages):
 node tests/web_smoke_test.js
 ```
 
-The browser suite checks layout parsing, A* and BFS behaviour, 250 generated
-maps across wall densities (including 0%), exit counts from 0 to 5 with their
-open 3×3 doorsteps, round limits, side selection and free unit choice, both
-adversarial AI controllers, the capture/escape/timeout rules, and 60 scripted
-battles from both sides (most resolve; hunts can legitimately run long now
-that there is no fatigue rule).
+The browser suite checks layout parsing, A* and BFS behaviour, 300 generated
+maps across wall densities (including 0%) and sizes from 9×9 to 19×19, exit
+counts from 0 to 5 with their open 3×3 doorsteps, round limits, side selection
+and free unit choice, both adversarial AI controllers, the
+capture/escape/timeout rules, and 60 scripted battles from both sides (most
+resolve; hunts can legitimately run long now that there is no fatigue rule).
 
 Godot build:
 
