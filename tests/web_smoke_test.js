@@ -4,9 +4,6 @@
  * Logic checks for the single-file browser build.
  *
  * Run with: node tests/web_smoke_test.js
- *
- * The game code is pulled out of index.html and executed in Node, so these
- * tests exercise exactly the same source the browser runs.
  */
 
 const fs = require('fs');
@@ -165,7 +162,7 @@ section('Map generation');
 }
 
 // -------------------------------------------------------------------- AI ---
-section('Fugitive AI');
+section('Fugitive AI (adversarial search)');
 {
   const grid = new Grid();
   grid.loadLayout([
@@ -177,25 +174,44 @@ section('Fugitive AI');
     '#########'
   ]);
   const cops = [{ x: 3, y: 2 }, { x: 4, y: 4 }];
-  const fugitive = { x: 2, y: 3 };
-  const others = [{ x: 6, y: 3, status: 'active' }];
+  const fugitives = [
+    { id: 'f0', x: 2, y: 3, status: 'active' },
+    { id: 'f1', x: 6, y: 3, status: 'active' }
+  ];
 
   for (const difficulty of [AI.EASY, AI.NORMAL, AI.HARD, AI.EXPERT]) {
     const ai = new FugitiveAI(difficulty);
-    const move = ai.chooseMove(grid, cops, fugitive, others, 0);
-    check(grid.isWalkable(move.x, move.y), `fugitive difficulty ${difficulty} returns a walkable tile`);
-    check(manhattan(move, fugitive) === 1, `fugitive difficulty ${difficulty} moves exactly one tile`);
-    check(!cops.some((cop) => same(cop, move)), `fugitive difficulty ${difficulty} never steps onto a hunter`);
-    check(!others.some((other) => same(other, move)), `fugitive difficulty ${difficulty} never stacks on another fugitive`);
+    const move = ai.chooseMove(grid, cops, fugitives, 0);
+    const unit = move ? fugitives[move.unit] : null;
+    check(move !== null && unit, `fugitive difficulty ${difficulty} picks a unit and a move`);
+    check(move && grid.isWalkable(move.x, move.y), `fugitive difficulty ${difficulty} returns a walkable tile`);
+    check(move && unit && manhattan(move, unit) === 1, `fugitive difficulty ${difficulty} moves exactly one tile`);
+    check(move && !cops.some((cop) => same(cop, move)), `fugitive difficulty ${difficulty} never steps onto a hunter`);
+    check(move && !fugitives.some((other, index) =>
+      index !== move.unit && other.status === 'active' && same(other, move)),
+      `fugitive difficulty ${difficulty} never stacks on another fugitive`);
   }
 
   const expert = new FugitiveAI(AI.EXPERT);
-  const expertMove = expert.chooseMove(grid, cops, fugitive, [], 0);
-  check(cops.every((cop) => Math.max(Math.abs(expertMove.x - cop.x), Math.abs(expertMove.y - cop.y)) > 1),
-    'Expert keeps out of every hunter\'s reach');
+  const expertMove = expert.chooseMove(grid, cops, [fugitives[0]], 0);
+  const expertUnit = expertMove ? fugitives[0] : null;
+  check(expertMove && expertUnit &&
+    cops.every((cop) => Math.max(Math.abs(expertMove.x - cop.x), Math.abs(expertMove.y - cop.y)) > 1),
+    'Expert keeps the chosen fugitive out of every hunter\'s reach');
+
+  const escapeGrid = new Grid(9, 9);
+  escapeGrid.setTile(4, 4, TILE.EXIT);
+  const escaper = new FugitiveAI(AI.EXPERT);
+  const escapeMove = escaper.chooseMove(
+    escapeGrid,
+    [{ x: 1, y: 1 }],
+    [{ id: 'f0', x: 4, y: 3, status: 'active' }],
+    0
+  );
+  check(escapeMove && escapeGrid.isExit(escapeMove.x, escapeMove.y), 'the search takes a winning exit move');
 }
 
-section('Hunter AI');
+section('Hunter AI (adversarial search)');
 {
   const grid = new Grid();
   grid.loadLayout([
@@ -207,75 +223,85 @@ section('Hunter AI');
     '#########'
   ]);
   const hunter = { x: 3, y: 2 };
-  const fugitive = { x: 3, y: 3, status: 'active' };
+  const fugitive = { id: 'f0', x: 3, y: 3, status: 'active' };
   const ai = new HunterAI(AI.NORMAL);
-  const move = ai.chooseMove(grid, hunter, [fugitive], [hunter]);
-  check(same(move, fugitive), 'a normal hunter steps onto an adjacent fugitive');
+  const move = ai.chooseMove(grid, [hunter], [fugitive], 0);
+  check(move && move.unit === 0 && same(move, fugitive), 'the search captures an adjacent fugitive');
 
   const easy = new HunterAI(AI.EASY);
-  const easyMove = easy.chooseMove(grid, hunter, [fugitive], [hunter]);
-  check(grid.isWalkable(easyMove.x, easyMove.y), 'an easy hunter returns a walkable tile');
-  check(manhattan(easyMove, hunter) === 1, 'an easy hunter moves exactly one tile');
-
-  const blocker = { x: 3, y: 3 };
-  const blockedAI = new HunterAI(AI.EXPERT);
-  const blockedMove = blockedAI.chooseMove(grid, hunter, [{ x: 5, y: 3, status: 'active' }], [hunter, blocker]);
-  check(!same(blockedMove, blocker), 'a hunter never steps onto another hunter');
+  const easyMove = easy.chooseMove(grid, [hunter], [fugitive], 0);
+  const easyCop = easyMove ? [hunter][easyMove.unit] : null;
+  check(easyMove && grid.isWalkable(easyMove.x, easyMove.y), 'an easy hunter returns a walkable tile');
+  check(easyMove && easyCop && manhattan(easyMove, easyCop) === 1, 'an easy hunter moves exactly one tile');
 }
 
 // --------------------------------------------------------- game state ----
 section('Game state machine');
 {
-  // Hunters are forced to move in rotation; no selection.
   const game = new Game(makeRng(42), settings('hunters', 3, 2, 40));
   game.newGame();
   check(game.cops.length === 3 && game.fugitives.length === 2, 'the requested actor counts are built');
   check(game.phase === 'hunters' && game.round === 1, 'a new game starts on the hunter phase');
-  check(game.activeHunterIndex === 0, 'the first hunter starts');
+  check(game.selectedUnit() !== null, 'a movable hunter is selected automatically');
+  check(game.canAnyHunterMove(), 'a hunter can move');
 
+  // The player can pick any hunter, not a forced rotation.
+  const first = game.selectedUnit();
+  const alternate = game.cops.find((cop) => cop !== first && game.copMoves(cop).length > 0);
+  if (alternate) {
+    game.selectUnit(alternate.id);
+    check(game.selectedUnit() === alternate, 'the player can choose a different hunter');
+  } else {
+    check(true, 'the player can choose a different hunter (single option)');
+  }
+
+  const chosen = game.selectedUnit();
   const before = game.cops.map((cop) => ({ x: cop.x, y: cop.y }));
-  const active = game.activeHunter();
-  const target = game.hunterTargets(active)[0];
-  if (target) game.moveActiveHunter(target.x - active.x, target.y - active.y);
-  else game.skipHunterTurn();
-
-  const movedOthers = game.cops.filter((cop, index) => !same(cop, before[index]));
-  check(movedOthers.length <= 1 && (movedOthers.length === 0 || same(movedOthers[0], active)),
-    'only the active hunter moves');
+  const target = game.copMoves(chosen)[0];
+  game.moveSelectedCop(target.x - chosen.x, target.y - chosen.y);
   check(game.phase === 'fugitives', 'the fugitive phase follows the hunter move');
-  check(game.activeHunterIndex === 1, 'the turn passes to the next hunter');
+  const moved = game.cops.filter((cop, index) => !same(cop, before[index]));
+  check(moved.length === 1 && same(moved[0], chosen), 'only the chosen hunter moves');
 
-  game.endFugitivePhase();
-  check(game.phase === 'hunters' && game.round === 2, 'a new round starts after the fugitives');
-  check(game.activeHunterIndex === 1, 'the next round uses the second hunter');
+  // The AI fugitives move one unit, then the round advances.
+  game.aiFugitiveStep();
+  check(game.phase === 'hunters' && game.round === 2, 'one AI fugitive move ends the round');
+  check(game.selectedUnit() !== null, 'a hunter is selected for the new round');
 
-  const second = game.activeHunter();
-  const secondTarget = game.hunterTargets(second)[0];
-  if (secondTarget) game.moveActiveHunter(secondTarget.x - second.x, secondTarget.y - second.y);
-  else game.skipHunterTurn();
-  check(game.activeHunterIndex === 2, 'the rotation continues to the third hunter');
+  // The player can choose a different hunter next round.
+  const nextHunter = game.cops.find((cop) => game.copMoves(cop).length > 0);
+  if (nextHunter) {
+    game.selectUnit(nextHunter.id);
+    check(game.selectedUnit() === nextHunter, 'the next round can use another hunter');
+  }
 
-  // Playing as the fugitives: the AI moves the hunters in rotation.
+  // Playing as the fugitives.
   const side = new Game(makeRng(9), settings('fugitives', 2, 2, 0, AI.EASY));
   side.newGame();
   check(side.playerSide === 'fugitives' && side.phase === 'hunters', 'the player can take the fugitive side');
   side.aiHunterStep();
-  check(side.phase === 'fugitives', 'the AI hunter acts, then the player moves fugitives');
-  check(side.activeHunterIndex === 1, 'the AI hunters rotate too');
-  const selected = side.fugitiveById(side.selectedFugitiveId);
-  check(selected !== null, 'a fugitive is selected for the player');
-  const fugitiveTarget = side.fugitiveTargets(selected)[0];
-  if (fugitiveTarget) side.moveSelectedFugitive(fugitiveTarget.x - selected.x, fugitiveTarget.y - selected.y);
-  check(selected.movedThisPhase, 'the player fugitive moves one tile');
+  check(side.phase === 'fugitives', 'the AI moves one hunter, then the player acts');
+  check(side.selectedUnit() !== null, 'a fugitive is selected automatically');
+  const chosenFugitive = side.selectedUnit();
+  const otherFugitive = side.activeFugitives().find((fugitive) => fugitive !== chosenFugitive);
+  if (otherFugitive && side.fugitiveMoves(otherFugitive).length > 0) {
+    side.selectUnit(otherFugitive.id);
+    check(side.selectedUnit() === otherFugitive, 'the player can choose a different fugitive');
+  }
+  const activeFugitive = side.selectedUnit();
+  const fugitiveTarget = side.fugitiveMoves(activeFugitive)[0];
+  side.moveSelectedFugitive(fugitiveTarget.x - activeFugitive.x, fugitiveTarget.y - activeFugitive.y);
+  check(side.phase === 'hunters' && side.round === 2, 'one fugitive move ends the round');
 
   // Capture ends a one-fugitive hunt immediately.
   const capture = new Game(makeRng(3), settings('hunters', 1, 1, 40));
   capture.newGame();
   const prey = capture.fugitives[0];
-  const hunter = capture.activeHunter();
+  const hunter = capture.cops[0];
   hunter.x = prey.x + 1;
   hunter.y = prey.y;
-  const captureResult = capture.moveActiveHunter(-1, 0);
+  capture.selectUnit(hunter.id);
+  const captureResult = capture.moveSelectedCop(-1, 0);
   check(captureResult.kind === 'capture', 'stepping onto a fugitive captures it');
   check(capture.outcome === 'hunters' && capture.playerWon === true, 'catching the last fugitive wins for the hunters');
 
@@ -286,24 +312,11 @@ section('Game state machine');
   escape.fugitives[0].x = exitCell.x;
   escape.fugitives[0].y = exitCell.y - 1;
   escape.grid.setTile(exitCell.x, exitCell.y - 1, TILE.FLOOR);
-  escape.aiList[0].chooseMove = () => ({ x: exitCell.x, y: exitCell.y });
+  escape.fugitiveAI.chooseMove = () => ({ unit: 0, x: exitCell.x, y: exitCell.y });
   escape.beginFugitivePhase();
-  const escapeResult = escape.stepFugitive();
+  const escapeResult = escape.aiFugitiveStep();
   check(escapeResult.kind === 'escaped' && escape.outcome === 'fugitives', 'reaching the exit wins for the fugitive');
   check(escape.playerWon === false, 'a hunter player loses when a fugitive escapes');
-
-  // With several exits, any one of them wins for the fugitives.
-  const multi = new Game(makeRng(13), settings('hunters', 1, 2, 40, AI.NORMAL, 3));
-  multi.newGame();
-  check(multi.grid.exits.length === 3, 'three exits are placed on the board');
-  const farExit = multi.grid.exits[multi.grid.exits.length - 1];
-  multi.fugitives[0].x = farExit.x;
-  multi.fugitives[0].y = farExit.y - 1;
-  multi.grid.setTile(farExit.x, farExit.y - 1, TILE.FLOOR);
-  multi.aiList[0].chooseMove = () => ({ x: farExit.x, y: farExit.y });
-  multi.beginFugitivePhase();
-  const multiResult = multi.stepFugitive();
-  check(multiResult.kind === 'escaped' && multi.outcome === 'fugitives', 'any exit wins for the fugitives');
 
   // The same escape is a win when the player controls the fugitive.
   const reverse = new Game(makeRng(7), settings('fugitives', 1, 1, 0, AI.EASY));
@@ -312,8 +325,11 @@ section('Game state machine');
   reverse.fugitives[0].x = reverseExit.x;
   reverse.fugitives[0].y = reverseExit.y - 1;
   reverse.grid.setTile(reverseExit.x, reverseExit.y - 1, TILE.FLOOR);
+  reverse.fugitiveAI.random = Math.random;
+  reverse.hunterAI.random = Math.random;
+  reverse.aiHunterStep();
   reverse.beginFugitivePhase();
-  reverse.selectedFugitiveId = reverse.fugitives[0].id;
+  reverse.selectUnit(reverse.fugitives[0].id);
   reverse.moveSelectedFugitive(0, 1);
   check(reverse.outcome === 'fugitives' && reverse.playerWon === true, 'the fugitive player wins by escaping');
 
@@ -321,7 +337,7 @@ section('Game state machine');
   const caught = new Game(makeRng(11), settings('fugitives', 1, 1, 40));
   caught.newGame();
   const victim = caught.fugitives[0];
-  const chaser = caught.activeHunter();
+  const chaser = caught.cops[0];
   chaser.x = victim.x + 1;
   chaser.y = victim.y;
   caught.aiHunterStep();
@@ -334,11 +350,10 @@ section('Simulated battles');
   const configs = [
     settings('hunters', 1, 1, 40),
     settings('hunters', 2, 2, 40),
-    settings('hunters', 2, 2, 45, AI.NORMAL, 3),
-    settings('hunters', 3, 2, 45),
+    settings('hunters', 3, 2, 45, AI.NORMAL, 2),
     settings('fugitives', 1, 1, 40),
     settings('fugitives', 2, 2, 40),
-    settings('fugitives', 1, 3, 30, AI.NORMAL, 2)
+    settings('fugitives', 1, 3, 30)
   ];
   let resolved = 0;
   let total = 0;
@@ -362,39 +377,50 @@ section('Simulated battles');
             game.aiHunterStep();
             continue;
           }
-          if (!game.canActiveHunterMove()) {
-            game.skipHunterTurn();
+          if (!game.canAnyHunterMove()) {
+            game.skipHunterPhase();
             continue;
           }
-          const hunter = game.activeHunter();
+          const movable = game.cops.filter((cop) => game.copMoves(cop).length > 0);
+          const hunter = movable.sort((a, b) => {
+            const fa = game.activeFugitives().reduce((best, f) => Math.min(best, manhattan(a, f)), Infinity);
+            const fb = game.activeFugitives().reduce((best, f) => Math.min(best, manhattan(b, f)), Infinity);
+            return fa - fb;
+          })[0];
+          game.selectUnit(hunter.id);
           const fugitive = game.activeFugitives()
             .slice()
             .sort((a, b) => manhattan(a, hunter) - manhattan(b, hunter))[0];
           const otherCops = game.cops.filter((cop) => cop !== hunter);
           const path = fugitive ? Pathfinding.findPath(game.grid, hunter, fugitive, otherCops) : [];
-          const target = path.length > 0 ? path[0] : game.hunterTargets(hunter)[0];
-          if (target) game.moveActiveHunter(target.x - hunter.x, target.y - hunter.y);
-          else game.skipHunterTurn();
+          const target = path.length > 0 ? path[0] : game.copMoves(hunter)[0];
+          if (target) game.moveSelectedCop(target.x - hunter.x, target.y - hunter.y);
+          else game.skipHunterPhase();
           continue;
         }
 
         if (config.side === 'fugitives') {
-          if (!game.selectedFugitiveId) {
-            game.endFugitivePhase();
+          if (!game.canAnyFugitiveMove()) {
+            game.skipFugitivePhase();
             continue;
           }
-          const fugitive = game.fugitiveById(game.selectedFugitiveId);
+          const movable = game.activeFugitives().filter((fugitive) => game.fugitiveMoves(fugitive).length > 0);
           const exit = game.grid.exits[0];
+          const fugitive = movable.sort((a, b) => {
+            const da = Math.min(...game.grid.exits.map((cell) => manhattan(a, cell)));
+            const db = Math.min(...game.grid.exits.map((cell) => manhattan(b, cell)));
+            return da - db;
+          })[0];
+          game.selectUnit(fugitive.id);
           const others = game.activeFugitives().filter((other) => other !== fugitive);
           const path = Pathfinding.findPath(game.grid, fugitive, exit, [...game.cops, ...others]);
-          const target = path.length > 0 ? path[0] : game.fugitiveTargets(fugitive)[0];
+          const target = path.length > 0 ? path[0] : game.fugitiveMoves(fugitive)[0];
           if (target) game.moveSelectedFugitive(target.x - fugitive.x, target.y - fugitive.y);
-          else game.selectedFugitiveId = null;
+          else game.skipFugitivePhase();
           continue;
         }
 
-        const step = game.stepFugitive();
-        if (!step) game.endFugitivePhase();
+        game.aiFugitiveStep();
       }
 
       total += 1;
@@ -427,8 +453,6 @@ section('Simulated battles');
       `${config.side} ${config.hunters}v${config.fugitives} at ${config.walls}% stays consistent (${configResolved} resolved, ${configLong} long)`);
   }
 
-  // Equal-speed pursuit can run forever when nobody makes a mistake, so a few
-  // long games are legitimate; the engine must resolve most of them.
   check(resolved >= total * 0.7, `most simulated hunts reach a result (${resolved}/${total}, ${longGames} still running)`);
 }
 

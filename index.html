@@ -657,14 +657,13 @@
   const DIRS = [[0, -1], [1, 0], [0, 1], [-1, 0]]; // up, right, down, left
   const AI = { EASY: 0, NORMAL: 1, HARD: 2, EXPERT: 3 };
   const DIFFICULTY = [
-    { name: 'Easy', hint: 'Fugitives wander randomly.', hunterHint: 'Hunters wander randomly.' },
-    { name: 'Normal', hint: 'Fugitives run for the nearest exit.', hunterHint: 'Hunters chase the nearest fugitive.' },
-    { name: 'Hard', hint: 'Fugitives dodge the hunters.', hunterHint: 'Hunters cut off the exit route.' },
-    { name: 'Expert', hint: 'Fugitives plan three moves ahead.', hunterHint: 'Hunters cut off the exit route and chase hard.' }
+    { name: 'Easy', hint: 'Looks one move ahead, with a little randomness.', hunterHint: 'Hunters look one move ahead, with a little randomness.' },
+    { name: 'Normal', hint: 'Searches two moves ahead.', hunterHint: 'Hunters search two moves ahead.' },
+    { name: 'Hard', hint: 'Searches three moves ahead.', hunterHint: 'Hunters search three moves ahead.' },
+    { name: 'Expert', hint: 'Searches four moves ahead with alpha-beta pruning.', hunterHint: 'Hunters search four moves ahead with alpha-beta pruning.' }
   ];
 
   // Rounds until the AI side stops dodging and commits (fugitive AI only).
-  const URGENCY_TURNS = [8, 14, 20, 30];
   const MAX_ACTORS = 5;
   const MAX_EXITS = 5;
 
@@ -1101,202 +1100,240 @@
     }
   }
 
+  class AdversarialSearch {
+    constructor(grid, side, difficulty, random = Math.random) {
+      this.grid = grid;
+      this.side = side; // 'hunters' or 'fugitives'
+      this.difficulty = difficulty;
+      this.random = random;
+      this.depths = [1, 2, 3, 4];
+      this.branchLimit = 10;
+      this.maxNodes = 50000;
+      this.nodes = 0;
+    }
+
+    bestMove(state) {
+      const moves = this._moves(state);
+      if (moves.length === 0) return null;
+
+      // Easy still has a little randomness so it can be beaten.
+      if (this.difficulty === AI.EASY && this.random() < 0.25) {
+        return moves[Math.floor(this.random() * moves.length)];
+      }
+
+      const depth = this.depths[this.difficulty] || 2;
+      let best = moves[0];
+      let bestScore = -Infinity;
+      let ties = [];
+
+      for (const move of moves) {
+        const next = this._clone(state);
+        this._apply(next, move);
+        const score = this._search(next, depth - 1, -Infinity, Infinity);
+        if (score > bestScore + 1e-9) {
+          bestScore = score;
+          best = move;
+          ties = [move];
+        } else if (Math.abs(score - bestScore) <= 1e-9) {
+          ties.push(move);
+        }
+      }
+
+      if (ties.length > 1) return ties[Math.floor(this.random() * ties.length)];
+      return best;
+    }
+
+    _search(state, depth, alpha, beta) {
+      this.nodes += 1;
+      const outcome = this._outcome(state);
+      if (outcome) {
+        // Prefer faster wins and slower losses.
+        return outcome === this.side ? 1000000 + depth : -1000000 - depth;
+      }
+      if (depth <= 0 || this.nodes > this.maxNodes) return this._evaluate(state);
+
+      const moves = this._moves(state);
+      if (moves.length === 0) return this._evaluate(state);
+
+      if (state.phase === this.side) {
+        let value = -Infinity;
+        for (const move of moves) {
+          const next = this._clone(state);
+          this._apply(next, move);
+          value = Math.max(value, this._search(next, depth - 1, alpha, beta));
+          alpha = Math.max(alpha, value);
+          if (alpha >= beta) break;
+        }
+        return value;
+      }
+
+      let value = Infinity;
+      for (const move of moves) {
+        const next = this._clone(state);
+        this._apply(next, move);
+        value = Math.min(value, this._search(next, depth - 1, alpha, beta));
+        beta = Math.min(beta, value);
+        if (alpha >= beta) break;
+      }
+      return value;
+    }
+
+    _outcome(state) {
+      if (state.fugitives.some((fugitive) => fugitive.status === 'escaped')) return 'fugitives';
+      if (!state.fugitives.some((fugitive) => fugitive.status === 'active')) return 'hunters';
+      return null;
+    }
+
+    _clone(state) {
+      return {
+        cops: state.cops.map((cop) => ({ x: cop.x, y: cop.y })),
+        fugitives: state.fugitives.map((fugitive) => ({
+          id: fugitive.id,
+          x: fugitive.x,
+          y: fugitive.y,
+          status: fugitive.status
+        })),
+        phase: state.phase,
+        round: state.round
+      };
+    }
+
+    _moves(state) {
+      const moves = [];
+      if (state.phase === 'hunters') {
+        for (let unit = 0; unit < state.cops.length; unit++) {
+          const cop = state.cops[unit];
+          for (const [dx, dy] of DIRS) {
+            const x = cop.x + dx;
+            const y = cop.y + dy;
+            if (!this.grid.isWalkable(x, y)) continue;
+            if (state.cops.some((other) => other !== cop && other.x === x && other.y === y)) continue;
+            moves.push({ unit, x, y });
+          }
+        }
+      } else {
+        for (let unit = 0; unit < state.fugitives.length; unit++) {
+          const fugitive = state.fugitives[unit];
+          if (fugitive.status !== 'active') continue;
+          for (const [dx, dy] of DIRS) {
+            const x = fugitive.x + dx;
+            const y = fugitive.y + dy;
+            if (!this.grid.isWalkable(x, y)) continue;
+            if (state.cops.some((cop) => cop.x === x && cop.y === y)) continue;
+            if (state.fugitives.some((other) =>
+              other !== fugitive && other.status === 'active' && other.x === x && other.y === y)) continue;
+            moves.push({ unit, x, y });
+          }
+        }
+      }
+
+      moves.sort((a, b) => this._moveScore(state, b) - this._moveScore(state, a));
+      return moves.slice(0, this.branchLimit);
+    }
+
+    _moveScore(state, move) {
+      if (state.phase === 'hunters') {
+        if (state.fugitives.some((fugitive) =>
+          fugitive.status === 'active' && fugitive.x === move.x && fugitive.y === move.y)) return 10000;
+        let nearest = Infinity;
+        for (const fugitive of state.fugitives) {
+          if (fugitive.status !== 'active') continue;
+          nearest = Math.min(nearest, manhattan(move, fugitive));
+        }
+        return 1000 - nearest * 10;
+      }
+
+      if (this.grid.isExit(move.x, move.y)) return 10000;
+      let nearestExit = Infinity;
+      for (const exit of this.grid.exits) nearestExit = Math.min(nearestExit, manhattan(move, exit));
+      let nearestHunter = Infinity;
+      for (const cop of state.cops) nearestHunter = Math.min(nearestHunter, manhattan(move, cop));
+      return 1000 - nearestExit * 10 + nearestHunter * 2;
+    }
+
+    _apply(state, move) {
+      if (state.phase === 'hunters') {
+        const cop = state.cops[move.unit];
+        cop.x = move.x;
+        cop.y = move.y;
+        const victim = state.fugitives.find((fugitive) =>
+          fugitive.status === 'active' && fugitive.x === move.x && fugitive.y === move.y);
+        if (victim) victim.status = 'caught';
+        if (this._outcome(state)) return;
+        state.phase = 'fugitives';
+        return;
+      }
+
+      const fugitive = state.fugitives[move.unit];
+      fugitive.x = move.x;
+      fugitive.y = move.y;
+      if (this.grid.isExit(move.x, move.y)) {
+        fugitive.status = 'escaped';
+        return;
+      }
+      state.phase = 'hunters';
+      state.round += 1;
+    }
+
+    _evaluate(state) {
+      const active = state.fugitives.filter((fugitive) => fugitive.status === 'active');
+      if (active.length === 0) return this.side === 'hunters' ? 1000000 : -1000000;
+
+      let minExit = Infinity;
+      let maxSafety = -Infinity;
+      let mobility = 0;
+
+      for (const fugitive of active) {
+        let nearestExit = Infinity;
+        for (const exit of this.grid.exits) nearestExit = Math.min(nearestExit, manhattan(fugitive, exit));
+        minExit = Math.min(minExit, nearestExit);
+
+        let nearestHunter = Infinity;
+        for (const cop of state.cops) nearestHunter = Math.min(nearestHunter, manhattan(fugitive, cop));
+        maxSafety = Math.max(maxSafety, nearestHunter);
+        mobility += this.grid.neighbors(fugitive.x, fugitive.y).length;
+      }
+
+      if (!Number.isFinite(minExit)) minExit = 0;
+      if (!Number.isFinite(maxSafety)) maxSafety = 0;
+
+      const exitWeight = 12 + Math.min(state.round, 30) * 0.4;
+      let score =
+        -minExit * exitWeight +
+        maxSafety * 6 +
+        mobility * 0.4 +
+        active.length * 30;
+
+      if (this.side === 'hunters') score = -score;
+      return score;
+    }
+  }
+
   class FugitiveAI {
     constructor(difficulty = AI.NORMAL) {
       this.difficulty = difficulty;
-      this.recent = [];
       this.random = Math.random;
     }
 
-    reset() {
-      this.recent = [];
-    }
+    reset() { /* the search keeps no per-unit memory */ }
 
-    chooseMove(grid, cops, fugitive, others, round = 0) {
-      const blocked = [];
-      for (const cop of cops) blocked.push(cop);
-      for (const other of others) {
-        if (other.status === 'active' && !same(other, fugitive)) blocked.push(other);
-      }
-
-      const options = this._legalMoves(grid, fugitive, blocked);
-      if (options.length === 0) return fugitive;
-
-      const exitField = Pathfinding.distanceField(grid, grid.exits, blocked);
-      const urgency = clamp(round / (URGENCY_TURNS[this.difficulty] || 20), 0, 1);
-
-      let choice;
-      switch (this.difficulty) {
-        case AI.EASY:
-          choice = this._randomMove(options);
-          break;
-        case AI.HARD:
-          choice = this._cautiousMove(grid, options, exitField, cops, urgency);
-          break;
-        case AI.EXPERT:
-          choice = this._expertMove(grid, options, exitField, cops, fugitive, urgency);
-          break;
-        default:
-          choice = this._greedyMove(grid, options, exitField);
-      }
-
-      this._remember(fugitive);
-      return choice;
-    }
-
-    _legalMoves(grid, fugitive, blocked) {
-      const moves = [];
-      for (const cell of grid.neighbors(fugitive.x, fugitive.y)) {
-        if (blocked.some((actor) => same(actor, cell))) continue;
-        moves.push(cell);
-      }
-      return moves;
-    }
-
-    _remember(cell) {
-      this.recent.push({ x: cell.x, y: cell.y });
-      if (this.recent.length > 4) this.recent.shift();
-    }
-
-    _wasRecent(cell) { return this.recent.some((past) => same(past, cell)); }
-
-    _randomMove(options) {
-      return options[Math.floor(this.random() * options.length)];
-    }
-
-    _greedyMove(grid, options, exitField) {
-      let best = [];
-      let bestScore = Infinity;
-      for (const cell of options) {
-        const distance = exitField.get(idOf(grid, cell)) ?? Infinity;
-        const score = distance + (this._wasRecent(cell) ? 1.5 : 0);
-        if (score < bestScore - 1e-9) {
-          bestScore = score;
-          best = [cell];
-        } else if (Math.abs(score - bestScore) < 1e-9) {
-          best.push(cell);
-        }
-      }
-      if (best.length === 0) return options[0];
-      return best[Math.floor(this.random() * best.length)];
-    }
-
-    _cautiousMove(grid, options, exitField, cops, urgency) {
-      const threatWeight = lerp(3, 0, urgency);
-      let best = options[0];
-      let bestScore = Infinity;
-      for (const cell of options) {
-        const distance = exitField.get(idOf(grid, cell)) ?? Infinity;
-        let score = distance + this._threat(cell, cops) * threatWeight;
-        if (this._wasRecent(cell)) score += 2 * (1 - urgency) + 1;
-        if (score < bestScore) {
-          bestScore = score;
-          best = cell;
-        }
-      }
-      return best;
-    }
-
-    _expertMove(grid, options, exitField, cops, fugitive, urgency) {
-      let best = fugitive;
-      let bestScore = -Infinity;
-      for (const cell of options) {
-        const score = this._scoreExpertCell(grid, cell, exitField, cops, urgency);
-        if (score > bestScore) {
-          bestScore = score;
-          best = cell;
-        }
-      }
-      return best;
-    }
-
-    _scoreExpertCell(grid, cell, exitField, cops, urgency) {
-      if (grid.isExit(cell.x, cell.y)) return 10000;
-      const route = this._nearestExitPath(grid, cell, cops);
-      if (route.length === 0) return -10000;
-      const distance = route.length;
-      const survival = this._simulatePursuit(grid, cell, cops, exitField);
-      const openness = grid.neighbors(cell.x, cell.y).length;
-      const routes = this._routeOptions(grid, exitField, cell, cops, distance);
-
-      let score = 0;
-      score += survival * lerp(45, 0, urgency);
-      score -= distance * lerp(7, 14, urgency);
-      score += openness * 6 * (1 - urgency);
-      score += routes * 9 * (1 - urgency);
-      score -= this._threat(cell, cops) * 2 * (1 - urgency);
-      if (openness <= 1) score -= 30 * (1 - urgency);
-      if (this._threat(cell, cops) >= 12) score -= 150 * (1 - urgency);
-      if (this._wasRecent(cell)) score -= 24 * (1 - urgency) + 3;
-      return score;
-    }
-
-    _routeOptions(grid, exitField, cell, cops, distance) {
-      let routes = 0;
-      for (const next of grid.neighbors(cell.x, cell.y)) {
-        if (cops.some((cop) => same(cop, next))) continue;
-        const nextDistance = exitField.get(idOf(grid, next));
-        if (nextDistance !== undefined && nextDistance <= distance + 1) routes += 1;
-      }
-      return routes;
-    }
-
-    _nearestExitPath(grid, from, cops) {
-      let best = [];
-      for (const exitCell of grid.exits) {
-        const path = Pathfinding.findPath(grid, from, exitCell, cops);
-        if (path.length === 0) continue;
-        if (best.length === 0 || path.length < best.length) best = path;
-      }
-      return best;
-    }
-
-    _simulatePursuit(grid, start, cops, exitField) {
-      let fugitive = start;
-      const hunters = cops.map((cop) => ({ x: cop.x, y: cop.y }));
-      for (let turn = 0; turn < 3; turn++) {
-        for (const hunter of hunters) {
-          const step = this._hunterStep(grid, hunter, fugitive);
-          hunter.x = step.x;
-          hunter.y = step.y;
-          if (same(hunter, fugitive)) return turn;
-        }
-        fugitive = this._fleeStep(grid, fugitive, hunters, exitField);
-        if (grid.isExit(fugitive.x, fugitive.y)) return 4;
-      }
-      return 3;
-    }
-
-    _hunterStep(grid, hunter, fugitive) {
-      const path = Pathfinding.findPath(grid, hunter, fugitive);
-      return path.length > 0 ? path[0] : hunter;
-    }
-
-    _fleeStep(grid, fugitive, cops, exitField) {
-      const options = this._legalMoves(grid, fugitive, cops);
-      if (options.length === 0) return fugitive;
-      let best = fugitive;
-      let bestScore = Infinity;
-      for (const cell of options) {
-        const distance = exitField.get(idOf(grid, cell)) ?? Infinity;
-        const score = distance + this._threat(cell, cops) * 2;
-        if (score < bestScore) {
-          bestScore = score;
-          best = cell;
-        }
-      }
-      return best;
-    }
-
-    _threat(cell, cops) {
-      let threat = 0;
-      for (const cop of cops) {
-        const distance = chebyshev(cell, cop);
-        if (distance === 0) return 24;
-        if (distance === 1) threat = Math.max(threat, 12);
-        else if (distance === 2) threat = Math.max(threat, 4);
-      }
-      return threat;
+    chooseMove(grid, cops, fugitives, round = 0) {
+      const active = fugitives.filter((fugitive) => fugitive.status === 'active');
+      if (active.length === 0) return null;
+      const state = {
+        cops: cops.map((cop) => ({ x: cop.x, y: cop.y })),
+        fugitives: active.map((actor, index) => ({
+          id: actor.id || `f${index}`,
+          x: actor.x,
+          y: actor.y,
+          status: 'active'
+        })),
+        phase: 'fugitives',
+        round
+      };
+      const search = new AdversarialSearch(grid, 'fugitives', this.difficulty, this.random);
+      const move = search.bestMove(state);
+      return move ? { unit: move.unit, x: move.x, y: move.y } : null;
     }
   }
 
@@ -1306,52 +1343,23 @@
       this.random = Math.random;
     }
 
-    chooseMove(grid, hunter, fugitives, cops) {
-      const targets = fugitives.filter((fugitive) => fugitive.status === 'active');
-      if (targets.length === 0) return hunter;
-      const blocked = cops.filter((cop) => cop !== hunter);
-
-      if (this.difficulty === AI.EASY) {
-        const options = [];
-        for (const [dx, dy] of DIRS) {
-          const cell = { x: hunter.x + dx, y: hunter.y + dy };
-          if (!grid.isWalkable(cell.x, cell.y)) continue;
-          if (blocked.some((cop) => same(cop, cell))) continue;
-          options.push(cell);
-        }
-        if (options.length === 0) return hunter;
-        return options[Math.floor(this.random() * options.length)];
-      }
-
-      let target = targets
-        .slice()
-        .sort((a, b) => manhattan(a, hunter) - manhattan(b, hunter))[0];
-
-      // Hard and Expert try to reach a point on the fugitive's exit route
-      // before the fugitive gets there.
-      if (this.difficulty >= AI.HARD) {
-        let exitCell = grid.exits[0];
-        let bestDistance = Infinity;
-        for (const exit of grid.exits) {
-          const distance = manhattan(target, exit);
-          if (distance < bestDistance) {
-            bestDistance = distance;
-            exitCell = exit;
-          }
-        }
-        const route = Pathfinding.findPath(grid, target, exitCell);
-        const distances = Pathfinding.distanceField(grid, [hunter], blocked);
-        for (let i = 0; i < route.length; i++) {
-          const distance = distances.get(idOf(grid, route[i]));
-          if (distance !== undefined && distance <= i + 1) {
-            target = route[i];
-            break;
-          }
-        }
-      }
-
-      const path = Pathfinding.findPath(grid, hunter, target, blocked);
-      return path.length > 0 ? path[0] : hunter;
+    chooseMove(grid, cops, fugitives, round = 0) {
+      const active = fugitives.filter((fugitive) => fugitive.status === 'active');
+      if (active.length === 0) return null;
+      const state = {
+        cops: cops.map((cop) => ({ x: cop.x, y: cop.y })),
+        fugitives: active.map((actor, index) => ({
+          id: actor.id || `f${index}`,
+          x: actor.x,
+          y: actor.y,
+          status: 'active'
+        })),
+        phase: 'hunters',
+        round
+      };
+      const search = new AdversarialSearch(grid, 'hunters', this.difficulty, this.random);
+      const move = search.bestMove(state);
+      return move ? { unit: move.unit, x: move.x, y: move.y } : null;
     }
   }
 
@@ -1363,13 +1371,13 @@
       this.grid = null;
       this.cops = [];
       this.fugitives = [];
-      this.aiList = [];
       this.hunterAI = new HunterAI(settings.difficulty);
       this.hunterAI.random = rng;
+      this.fugitiveAI = new FugitiveAI(settings.difficulty);
+      this.fugitiveAI.random = rng;
       this.round = 1;
-      this.activeHunterIndex = 0;
       this.phase = 'hunters';
-      this.selectedFugitiveId = null;
+      this.selectedUnitId = null;
       this.caught = 0;
       this.escaped = 0;
       this.outcome = null;
@@ -1382,22 +1390,19 @@
       const spawns = MapGenerator.generate(this.grid, this.rng, this.settings);
       this.cops = spawns.cops.map((cell, index) => ({ id: `c${index}`, x: cell.x, y: cell.y }));
       this.fugitives = spawns.fugitives.map((cell, index) => ({
-        id: `f${index}`, x: cell.x, y: cell.y, status: 'active', movedThisPhase: false
+        id: `f${index}`, x: cell.x, y: cell.y, status: 'active'
       }));
-      this.aiList = this.fugitives.map(() => {
-        const ai = new FugitiveAI(this.settings.difficulty);
-        ai.random = this.rng;
-        return ai;
-      });
-      this.hunterAI.difficulty = this.settings.difficulty;
+      this.hunterAI.difficulty = settings.difficulty;
       this.hunterAI.random = this.rng;
+      this.fugitiveAI.difficulty = settings.difficulty;
+      this.fugitiveAI.random = this.rng;
       this.round = 1;
-      this.activeHunterIndex = 0;
-      this.selectedFugitiveId = null;
+      this.selectedUnitId = null;
       this.caught = 0;
       this.escaped = 0;
       this.outcome = null;
       this.phase = 'hunters';
+      this.beginHunterPhase();
       return this;
     }
 
@@ -1412,10 +1417,6 @@
       return this.fugitives.filter((fugitive) => fugitive.status === 'active');
     }
 
-    activeHunter() {
-      return this.cops[this.activeHunterIndex % this.cops.length];
-    }
-
     copById(id) { return this.cops.find((cop) => cop.id === id) || null; }
     copAt(x, y) { return this.cops.find((cop) => cop.x === x && cop.y === y) || null; }
     fugitiveById(id) { return this.fugitives.find((fugitive) => fugitive.id === id) || null; }
@@ -1424,187 +1425,181 @@
       return this.activeFugitives().find((fugitive) => fugitive.x === x && fugitive.y === y) || null;
     }
 
-    hunterTargets(hunter = this.activeHunter()) {
-      const targets = [];
+    copMoves(cop) {
+      const moves = [];
       for (const [dx, dy] of DIRS) {
-        const x = hunter.x + dx;
-        const y = hunter.y + dy;
+        const x = cop.x + dx;
+        const y = cop.y + dy;
         if (!this.grid.isWalkable(x, y)) continue;
-        if (this.cops.some((other) => other !== hunter && other.x === x && other.y === y)) continue;
-        targets.push({ x, y });
+        if (this.cops.some((other) => other !== cop && other.x === x && other.y === y)) continue;
+        moves.push({ x, y });
       }
-      return targets;
+      return moves;
     }
 
-    canActiveHunterMove() {
-      return this.hunterTargets().length > 0;
-    }
-
-    fugitiveTargets(fugitive) {
-      const targets = [];
+    fugitiveMoves(fugitive) {
+      const moves = [];
       for (const [dx, dy] of DIRS) {
         const x = fugitive.x + dx;
         const y = fugitive.y + dy;
         if (!this.grid.isWalkable(x, y)) continue;
         if (this.cops.some((cop) => cop.x === x && cop.y === y)) continue;
-        if (this.activeFugitives().some((other) => other !== fugitive && other.x === x && other.y === y)) continue;
-        targets.push({ x, y });
+        if (this.fugitives.some((other) =>
+          other !== fugitive && other.status === 'active' && other.x === x && other.y === y)) continue;
+        moves.push({ x, y });
       }
-      return targets;
+      return moves;
     }
 
-    canFugitiveMove(fugitive) {
-      return this.fugitiveTargets(fugitive).length > 0;
+    movesFor(unit) {
+      return this.cops.includes(unit) ? this.copMoves(unit) : this.fugitiveMoves(unit);
     }
 
-    advanceHunter() {
-      this.activeHunterIndex = (this.activeHunterIndex + 1) % this.cops.length;
+    canAnyHunterMove() {
+      return this.cops.some((cop) => this.copMoves(cop).length > 0);
+    }
+
+    canAnyFugitiveMove() {
+      return this.activeFugitives().some((fugitive) => this.fugitiveMoves(fugitive).length > 0);
     }
 
     beginHunterPhase() {
       this.phase = 'hunters';
-    }
-
-    skipHunterTurn() {
-      if (this.phase !== 'hunters') return;
-      this.advanceHunter();
-      this.beginFugitivePhase();
-    }
-
-    moveActiveHunter(dx, dy) {
-      if (this.phase !== 'hunters') return { kind: 'ignored' };
-      const hunter = this.activeHunter();
-      const target = { x: hunter.x + dx, y: hunter.y + dy };
-      if (!this.grid.isWalkable(target.x, target.y)) return { kind: 'blocked' };
-      if (this.cops.some((other) => other !== hunter && same(other, target))) return { kind: 'blocked' };
-
-      const victim = this.fugitiveAt(target.x, target.y);
-      hunter.x = target.x;
-      hunter.y = target.y;
-
-      if (victim) {
-        victim.status = 'caught';
-        this.caught += 1;
-      }
-
-      if (this.activeFugitives().length === 0) {
-        this.finish();
-        return { kind: victim ? 'capture' : 'moved', captured: Boolean(victim), gameOver: true };
-      }
-
-      this.advanceHunter();
-      this.beginFugitivePhase();
-      return { kind: victim ? 'capture' : 'moved', captured: Boolean(victim) };
-    }
-
-    aiHunterStep() {
-      if (this.phase !== 'hunters') return { kind: 'ignored' };
-      const hunter = this.activeHunter();
-      if (!this.canActiveHunterMove()) {
-        this.advanceHunter();
-        this.beginFugitivePhase();
-        return { kind: 'skipped' };
-      }
-
-      const next = this.hunterAI.chooseMove(this.grid, hunter, this.activeFugitives(), this.cops);
-      const target = next || hunter;
-      const victim = this.fugitiveAt(target.x, target.y);
-      hunter.x = target.x;
-      hunter.y = target.y;
-
-      if (victim) {
-        victim.status = 'caught';
-        this.caught += 1;
-      }
-
-      if (this.activeFugitives().length === 0) {
-        this.finish();
-        return { kind: victim ? 'capture' : 'moved', captured: Boolean(victim), gameOver: true };
-      }
-
-      this.advanceHunter();
-      this.beginFugitivePhase();
-      return { kind: victim ? 'capture' : 'moved', captured: Boolean(victim) };
+      this.selectedUnitId = null;
+      if (this.playerSide !== 'hunters') return;
+      const movable = this.cops.find((cop) => this.copMoves(cop).length > 0) || null;
+      this.selectedUnitId = movable ? movable.id : null;
     }
 
     beginFugitivePhase() {
-      if (this.phase === 'over') return;
       this.phase = 'fugitives';
-      for (const fugitive of this.fugitives) {
-        fugitive.movedThisPhase = fugitive.status !== 'active' || !this.canFugitiveMove(fugitive);
+      this.selectedUnitId = null;
+      if (this.playerSide !== 'fugitives') return;
+      const movable = this.activeFugitives().find((fugitive) => this.fugitiveMoves(fugitive).length > 0) || null;
+      this.selectedUnitId = movable ? movable.id : null;
+    }
+
+    selectUnit(id) {
+      if (this.phase === 'over') return false;
+      if (this.playerSide === 'hunters') {
+        if (this.phase !== 'hunters') return false;
+        const cop = this.copById(id);
+        if (!cop || this.copMoves(cop).length === 0) return false;
+        this.selectedUnitId = id;
+        return true;
       }
-      const next = this.nextPlayerFugitive();
-      this.selectedFugitiveId = next ? next.id : null;
-    }
-
-    nextPlayerFugitive() {
-      return this.activeFugitives().find((fugitive) => !fugitive.movedThisPhase) || null;
-    }
-
-    selectFugitive(id) {
-      if (this.phase !== 'fugitives' || this.playerSide !== 'fugitives') return false;
+      if (this.phase !== 'fugitives') return false;
       const fugitive = this.fugitiveById(id);
-      if (!fugitive || fugitive.status !== 'active' || fugitive.movedThisPhase) return false;
-      this.selectedFugitiveId = id;
+      if (!fugitive || fugitive.status !== 'active' || this.fugitiveMoves(fugitive).length === 0) return false;
+      this.selectedUnitId = id;
       return true;
+    }
+
+    selectedUnit() {
+      return this.playerSide === 'hunters'
+        ? this.copById(this.selectedUnitId)
+        : this.fugitiveById(this.selectedUnitId);
+    }
+
+    moveSelectedCop(dx, dy) {
+      if (this.phase !== 'hunters' || this.playerSide !== 'hunters') return { kind: 'ignored' };
+      const cop = this.copById(this.selectedUnitId);
+      if (!cop) return { kind: 'ignored' };
+      const target = { x: cop.x + dx, y: cop.y + dy };
+      if (!this.copMoves(cop).some((cell) => same(cell, target))) return { kind: 'blocked' };
+      return this._applyHunterMove(cop, target);
     }
 
     moveSelectedFugitive(dx, dy) {
       if (this.phase !== 'fugitives' || this.playerSide !== 'fugitives') return { kind: 'ignored' };
-      const fugitive = this.fugitiveById(this.selectedFugitiveId);
+      const fugitive = this.fugitiveById(this.selectedUnitId);
       if (!fugitive) return { kind: 'ignored' };
-
       const target = { x: fugitive.x + dx, y: fugitive.y + dy };
-      if (!this.fugitiveTargets(fugitive).some((cell) => same(cell, target))) return { kind: 'blocked' };
+      if (!this.fugitiveMoves(fugitive).some((cell) => same(cell, target))) return { kind: 'blocked' };
+      return this._applyFugitiveMove(fugitive, target);
+    }
 
+    _applyHunterMove(cop, target) {
+      const victim = this.fugitiveAt(target.x, target.y);
+      cop.x = target.x;
+      cop.y = target.y;
+      if (victim) {
+        victim.status = 'caught';
+        this.caught += 1;
+      }
+      if (this.activeFugitives().length === 0) {
+        this.finish();
+        return { kind: victim ? 'capture' : 'moved', captured: Boolean(victim), gameOver: true };
+      }
+      this.beginFugitivePhase();
+      return { kind: victim ? 'capture' : 'moved', captured: Boolean(victim) };
+    }
+
+    _applyFugitiveMove(fugitive, target) {
       fugitive.x = target.x;
       fugitive.y = target.y;
-      fugitive.movedThisPhase = true;
-
-      if (this.grid.isExit(fugitive.x, fugitive.y)) {
+      if (this.grid.isExit(target.x, target.y)) {
         fugitive.status = 'escaped';
         this.escaped += 1;
         this.finish();
         return { kind: 'escaped', gameOver: true };
       }
-
-      const next = this.nextPlayerFugitive();
-      this.selectedFugitiveId = next ? next.id : null;
+      this.round += 1;
+      this.beginHunterPhase();
       return { kind: 'moved' };
     }
 
-    stepFugitive() {
-      if (this.phase !== 'fugitives' || this.playerSide === 'fugitives') return null;
-      const fugitive = this.activeFugitives().find((candidate) => !candidate.movedThisPhase);
-      if (!fugitive) return null;
-
-      const ai = this.aiList[this.fugitives.indexOf(fugitive)];
-      const others = this.activeFugitives().filter((other) => other !== fugitive);
-      const next = ai.chooseMove(this.grid, this.cops, fugitive, others, this.round);
-
-      fugitive.movedThisPhase = true;
-      if (same(next, fugitive)) return { kind: 'blocked', fugitive };
-
-      fugitive.x = next.x;
-      fugitive.y = next.y;
-      if (this.grid.isExit(fugitive.x, fugitive.y)) {
-        fugitive.status = 'escaped';
-        this.escaped += 1;
-        this.finish();
-        return { kind: 'escaped', fugitive, gameOver: true };
-      }
-      return { kind: 'moved', fugitive };
+    skipHunterPhase() {
+      if (this.phase === 'hunters') this.beginFugitivePhase();
     }
 
-    endFugitivePhase() {
-      if (this.phase === 'over') return true;
-      if (this.activeFugitives().length === 0) {
-        this.finish();
-        return true;
+    skipFugitivePhase() {
+      if (this.phase === 'fugitives') {
+        this.round += 1;
+        this.beginHunterPhase();
       }
-      this.round += 1;
-      this.beginHunterPhase();
-      return false;
+    }
+
+    aiHunterStep() {
+      if (this.phase !== 'hunters' || this.playerSide !== 'fugitives') return { kind: 'ignored' };
+      if (!this.canAnyHunterMove()) {
+        this.beginFugitivePhase();
+        return { kind: 'skipped' };
+      }
+      const choice = this.hunterAI.chooseMove(this.grid, this.cops, this.activeFugitives(), this.round);
+      if (!choice) {
+        this.beginFugitivePhase();
+        return { kind: 'skipped' };
+      }
+      const cop = this.cops[choice.unit];
+      if (!cop) {
+        this.beginFugitivePhase();
+        return { kind: 'skipped' };
+      }
+      return this._applyHunterMove(cop, { x: choice.x, y: choice.y });
+    }
+
+    aiFugitiveStep() {
+      if (this.phase !== 'fugitives' || this.playerSide !== 'hunters') return { kind: 'ignored' };
+      if (!this.canAnyFugitiveMove()) {
+        this.round += 1;
+        this.beginHunterPhase();
+        return { kind: 'skipped' };
+      }
+      const active = this.activeFugitives();
+      const choice = this.fugitiveAI.chooseMove(this.grid, this.cops, active, this.round);
+      if (!choice) {
+        this.round += 1;
+        this.beginHunterPhase();
+        return { kind: 'skipped' };
+      }
+      const fugitive = active[choice.unit];
+      if (!fugitive) {
+        this.round += 1;
+        this.beginHunterPhase();
+        return { kind: 'skipped' };
+      }
+      return this._applyFugitiveMove(fugitive, { x: choice.x, y: choice.y });
     }
 
     finish() {
@@ -1614,8 +1609,8 @@
 
     setDifficulty(difficulty) {
       this.settings.difficulty = difficulty;
-      for (const ai of this.aiList) ai.difficulty = difficulty;
       this.hunterAI.difficulty = difficulty;
+      this.fugitiveAI.difficulty = difficulty;
     }
   }
 
@@ -1845,28 +1840,28 @@
       }
     }
 
-    function hunterLabel() {
-      return `Hunter ${game.activeHunterIndex + 1} of ${game.cops.length}`;
-    }
-
-    function fugitiveLabel(fugitive) {
-      return `Fugitive ${game.fugitives.indexOf(fugitive) + 1} of ${game.totalFugitives}`;
+    function unitLabel(unit) {
+      if (!unit) return '';
+      if (game.cops.includes(unit)) return `Hunter ${game.cops.indexOf(unit) + 1}`;
+      return `Fugitive ${game.fugitives.indexOf(unit) + 1}`;
     }
 
     function updateTurnMessage() {
-      if (!game) return;
+      if (!game || game.phase === 'over') return;
       if (game.phase === 'hunters') {
-        if (game.playerSide === 'hunters') setStatus(`${hunterLabel()} - move one tile.`);
-        else setStatus('The hunters are moving...');
+        if (game.playerSide === 'hunters') {
+          const unit = game.selectedUnit();
+          setStatus(unit ? `${unitLabel(unit)} - move it.` : 'Choose a hunter to move.');
+        } else {
+          setStatus('The hunters are moving...');
+        }
         return;
       }
-      if (game.phase === 'fugitives') {
-        if (game.playerSide === 'fugitives') {
-          const fugitive = game.fugitiveById(game.selectedFugitiveId);
-          setStatus(fugitive ? `${fugitiveLabel(fugitive)} - move it.` : 'Move your fugitives.');
-        } else {
-          setStatus(plural('The fugitive is on the move...', 'The fugitives are on the move...'));
-        }
+      if (game.playerSide === 'fugitives') {
+        const unit = game.selectedUnit();
+        setStatus(unit ? `${unitLabel(unit)} - move it.` : 'Choose a fugitive to move.');
+      } else {
+        setStatus(plural('The fugitive is on the move...', 'The fugitives are on the move...'));
       }
     }
 
@@ -1878,31 +1873,31 @@
       }
       if (game.phase === 'hunters') {
         if (game.playerSide === 'hunters') {
-          if (!game.canActiveHunterMove()) skipActiveHunter();
+          if (!game.canAnyHunterMove()) skipPhase('hunters');
           else updateTurnMessage();
         } else {
           runAiHunter();
         }
         return;
       }
-      if (game.phase === 'fugitives') {
-        if (game.playerSide === 'fugitives') {
-          if (!game.selectedFugitiveId) finishFugitivePhase();
-          else updateTurnMessage();
-        } else {
-          runAiFugitives();
-        }
+      if (game.playerSide === 'fugitives') {
+        if (!game.canAnyFugitiveMove()) skipPhase('fugitives');
+        else updateTurnMessage();
+      } else {
+        runAiFugitive();
       }
     }
 
-    function skipActiveHunter() {
-      const label = hunterLabel();
+    function skipPhase(side) {
       const myToken = ++token;
-      setStatus(`${label} is boxed in - turn skipped.`);
+      setStatus(side === 'hunters'
+        ? 'No hunter can move - phase skipped.'
+        : 'No fugitive can move - phase skipped.');
       clearPhaseTimer();
       phaseTimer = window.setTimeout(() => {
         if (myToken !== token) return;
-        game.skipHunterTurn();
+        if (side === 'hunters') game.skipHunterPhase();
+        else game.skipFugitivePhase();
         syncVisuals();
         updateHud();
         startPhase();
@@ -1926,55 +1921,29 @@
       }, 420);
     }
 
-    function runAiFugitives() {
+    function runAiFugitive() {
       const myToken = ++token;
       setStatus(plural('The fugitive is on the move...', 'The fugitives are on the move...'));
       clearPhaseTimer();
-
-      const step = () => {
+      phaseTimer = window.setTimeout(() => {
         if (myToken !== token) return;
-        const result = game.stepFugitive();
-        if (!result) {
-          const over = game.endFugitivePhase();
-          updateHud();
-          syncVisuals();
-          if (over || game.phase === 'over') {
-            scheduleResult();
-            return;
-          }
-          startPhase();
-          return;
-        }
-
+        game.aiFugitiveStep();
         syncVisuals();
         updateHud();
         if (game.phase === 'over') {
           scheduleResult();
           return;
         }
-        phaseTimer = window.setTimeout(step, 230);
-      };
-
-      phaseTimer = window.setTimeout(step, 300);
-    }
-
-    function finishFugitivePhase() {
-      const over = game.endFugitivePhase();
-      updateHud();
-      syncVisuals();
-      if (over || game.phase === 'over') {
-        scheduleResult();
-        return;
-      }
-      startPhase();
+        startPhase();
+      }, 320);
     }
 
     function performHunterMove(dx, dy) {
       if (!game || game.phase !== 'hunters' || game.playerSide !== 'hunters') return;
-      const hunter = game.activeHunter();
-      const result = game.moveActiveHunter(dx, dy);
+      const hunter = game.selectedUnit();
+      const result = game.moveSelectedCop(dx, dy);
       if (result.kind === 'blocked') {
-        view.nudge = { id: hunter.id, x: dx * 8, y: dy * 8 };
+        if (hunter) view.nudge = { id: hunter.id, x: dx * 8, y: dy * 8 };
         return;
       }
       if (result.kind === 'ignored') return;
@@ -1990,7 +1959,7 @@
 
     function performFugitiveMove(dx, dy) {
       if (!game || game.phase !== 'fugitives' || game.playerSide !== 'fugitives') return;
-      const fugitive = game.fugitiveById(game.selectedFugitiveId);
+      const fugitive = game.selectedUnit();
       const result = game.moveSelectedFugitive(dx, dy);
       if (result.kind === 'blocked') {
         if (fugitive) view.nudge = { id: fugitive.id, x: dx * 8, y: dy * 8 };
@@ -2004,11 +1973,7 @@
         scheduleResult();
         return;
       }
-      if (!game.selectedFugitiveId) {
-        finishFugitivePhase();
-        return;
-      }
-      updateTurnMessage();
+      startPhase();
     }
 
     function performMove(dx, dy) {
@@ -2017,9 +1982,9 @@
       else if (game.phase === 'fugitives' && game.playerSide === 'fugitives') performFugitiveMove(dx, dy);
     }
 
-    function selectFugitive(id) {
-      if (!game || game.playerSide !== 'fugitives') return;
-      if (game.selectFugitive(id)) updateTurnMessage();
+    function selectUnit(id) {
+      if (!game) return;
+      if (game.selectUnit(id)) updateTurnMessage();
     }
 
     function scheduleResult() {
@@ -2083,9 +2048,11 @@
         restart();
         return;
       }
-      if (/^[1-5]$/.test(event.key) && game && game.playerSide === 'fugitives') {
-        const fugitive = game.fugitives[Number(event.key) - 1];
-        if (fugitive) selectFugitive(fugitive.id);
+      if (/^[1-5]$/.test(event.key) && game) {
+        const unit = game.playerSide === 'hunters'
+          ? game.cops[Number(event.key) - 1]
+          : game.fugitives[Number(event.key) - 1];
+        if (unit) selectUnit(unit.id);
         return;
       }
       const direction = directionForKey(event);
@@ -2145,25 +2112,18 @@
 
     function controlledUnit() {
       if (!game) return null;
-      if (game.phase === 'hunters' && game.playerSide === 'hunters') return game.activeHunter();
-      if (game.phase === 'fugitives' && game.playerSide === 'fugitives') {
-        return game.fugitiveById(game.selectedFugitiveId);
-      }
+      if (game.playerSide === 'hunters' && game.phase === 'hunters') return game.selectedUnit();
+      if (game.playerSide === 'fugitives' && game.phase === 'fugitives') return game.selectedUnit();
       return null;
     }
 
     function focusUnit() {
-      if (!game) return null;
-      if (game.phase === 'hunters') return game.activeHunter();
-      if (game.phase === 'fugitives' && game.playerSide === 'fugitives') {
-        return game.fugitiveById(game.selectedFugitiveId);
-      }
-      return null;
+      return controlledUnit();
     }
 
     function targetsFor(unit) {
       if (!game || !unit) return [];
-      return game.cops.includes(unit) ? game.hunterTargets(unit) : game.fugitiveTargets(unit);
+      return game.movesFor(unit);
     }
 
     function unitVisual(unit) {
@@ -2175,25 +2135,27 @@
 
     function handleCell(cell) {
       if (!game) return;
-      if (game.phase === 'hunters' && game.playerSide === 'hunters') {
-        const hunter = game.activeHunter();
-        if (same(hunter, cell)) {
-          setStatus(`${hunterLabel()} moves this round - hunters take turns.`);
+      if (game.playerSide === 'hunters' && game.phase === 'hunters') {
+        const cop = game.copAt(cell.x, cell.y);
+        if (cop) {
+          selectUnit(cop.id);
           return;
         }
-        const dx = cell.x - hunter.x;
-        const dy = cell.y - hunter.y;
+        const selected = game.selectedUnit();
+        if (!selected) return;
+        const dx = cell.x - selected.x;
+        const dy = cell.y - selected.y;
         if (Math.abs(dx) + Math.abs(dy) !== 1) return;
         performHunterMove(dx, dy);
         return;
       }
-      if (game.phase === 'fugitives' && game.playerSide === 'fugitives') {
+      if (game.playerSide === 'fugitives' && game.phase === 'fugitives') {
         const fugitive = game.fugitiveAt(cell.x, cell.y);
         if (fugitive) {
-          selectFugitive(fugitive.id);
+          selectUnit(fugitive.id);
           return;
         }
-        const selected = game.fugitiveById(game.selectedFugitiveId);
+        const selected = game.selectedUnit();
         if (!selected) return;
         const dx = cell.x - selected.x;
         const dy = cell.y - selected.y;
@@ -2515,7 +2477,7 @@
       restart,
       newGame,
       settings: readSettings,
-      selectFugitive
+      selectUnit
     };
   }
 

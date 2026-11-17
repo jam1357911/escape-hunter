@@ -9,9 +9,9 @@ A turn-based pursuit game in two forms:
 
 The board is **15 × 15**. In the browser build you choose whether to play as
 the **hunters** or the **fugitives**, how many of each (1–5), **1–5 exits**,
-and **0–60% walls**. Hunters act in a fixed rotation; every active fugitive
-answers each round. Random mazes are always connected, so the chase is decided
-by positioning, not by a sealed-off spawn.
+and **0–60% walls**. Each round you pick **one** of your units to move one
+tile; the AI picks one of its units. Random mazes are always connected, so the
+chase is decided by positioning, not by a sealed-off spawn.
 
 ![Escape Hunter in the browser](docs/screenshot-web.png)
 
@@ -26,8 +26,8 @@ game is inline HTML, CSS and JavaScript.
 | Setting | Range | Effect |
 | --- | --- | --- |
 | **Play as** | Hunters / Fugitives | Which side you control. |
-| **Hunters** | 1–5 | Hunters in play. They move one at a time in a fixed rotation. |
-| **Fugitives** | 1–5 | Fugitives in play. Every active fugitive moves each round. |
+| **Hunters** | 1–5 | Hunters in play. One of them moves each round. |
+| **Fugitives** | 1–5 | Fugitives in play. One of them moves each round. |
 | **Exits** | 1–5 | How many exit tiles are placed. Each gets a clear 3×3 doorstep. |
 | **Walls** | 0–60% | Wall coverage. 0% is a completely open room; 60% is a dense maze. |
 | **Difficulty** | Easy–Expert | Skill of the side the AI controls. |
@@ -49,10 +49,10 @@ URL makes the map reproducible.
 | R | New hunt |
 | Difficulty dropdown | Switch AI tier immediately |
 
-The hunter whose turn it is has a cyan ring and blue dots on its legal steps —
-you cannot choose a different hunter; the rotation decides. When you play as
-the fugitives, the ring is on the fugitive you have selected, and each active
-fugitive may move once per round.
+The unit you have selected has a cyan ring and blue dots on its legal steps.
+Click / tap any of your movable units to select it, or press **1–5**; then
+move it one tile. The selection is free — there is no forced order — but only
+one unit on your side moves per round.
 
 ![Playing as the fugitives](docs/screenshot-web-fugitive.png)
 
@@ -60,12 +60,12 @@ fugitive may move once per round.
 
 The same sequence runs for both sides; only who controls each phase changes.
 
-1. **Hunter phase.** One hunter acts — the next one in the rotation. You move
-   it when playing hunters; the AI moves it when playing fugitives. A boxed-in
-   hunter skips its turn.
-2. **Fugitive phase.** Every active fugitive moves one tile. You move them
-   when playing fugitives; the AI moves them when playing hunters. Fugitives
-   cannot step onto a hunter or onto each other.
+1. **Hunter phase.** One hunter moves one tile — you choose which one when you
+   play hunters; the AI chooses when you play fugitives. A hunter blocked by
+   walls or other hunters can be left for another round.
+2. **Fugitive phase.** One fugitive moves one tile — you choose which one when
+   you play fugitives; the AI chooses when you play hunters. Fugitives cannot
+   step onto a hunter or onto each other.
 3. Stepping onto a fugitive captures it. A fugitive that reaches **any** exit
    escapes, and the first escape decides the hunt immediately.
 
@@ -89,8 +89,8 @@ Some starting points:
 
 - **Hunter, 1 vs 1, 40%** — the tight duel. Cutting the exit off is essential;
   a straight chase can go on for a long time.
-- **Hunter, 3 vs 2, 55%** — a tactical sweep; the rotation means only one
-  hunter acts per round, so position the others for later turns.
+- **Hunter, 3 vs 2, 55%** — a tactical sweep; only one hunter moves each
+  round, so park the others on exits and advance the closest one.
 - **Fugitive, 1 vs 2, 45%** — split the fugitives up and time a run for the
   exit while the AI hunter is busy.
 - **Fugitive, 1 vs 3, 30%** — one hunter, three fugitives and an open map: a
@@ -104,9 +104,10 @@ door, and one escape is enough.
 ## Godot 4 project
 
 The native build is the original 1 hunter vs 1 fugitive hunt: 15 × 15, 40%
-walls, one exit, the same AI tiers, but no setup panel, no side selection and
-no fatigue rule. It needs Godot **4.3** or newer (standard build, no C#). Import
-[`project.godot`](project.godot), then press **F5**; from a terminal:
+walls, one exit, its earlier heuristic AI, but no setup panel, no side
+selection and no fatigue rule. It needs Godot **4.3** or newer (standard build,
+no C#). Import [`project.godot`](project.godot), then press **F5**; from a
+terminal:
 
 ```bash
 godot --path .
@@ -117,31 +118,34 @@ there is no tileset or sprite import step.
 
 ![Godot build](docs/screenshot.png)
 
-## AI tiers
+## Adversarial search AI
 
-| Tier | Behaviour |
-| --- | --- |
-| **Easy** | Uniform random legal move. |
-| **Normal** | Breadth-first exit distance field; steps to the neighbour closest to the nearest exit. |
-| **Hard** | Same exit pull, plus a threat cost from the nearest hunter, so it slides around the hunters instead of into them. |
-| **Expert** | A* route to the nearest exit, scored with a 3-turn pursuit simulation against *all* hunters, a dead-end penalty, and a bonus for keeping several forward escape routes open. |
+Both computer sides use the same **minimax search with alpha-beta pruning**. A
+search node is one phase of the real game:
 
-More details:
+- the side to move picks **one of its units** and a legal one-tile move; the
+  search chooses both the unit and the direction;
+- terminal nodes are a capture (all fugitives caught) or an escape (a fugitive
+  standing on any exit);
+- leaves are scored with a heuristic.
 
-- Normal, Hard and Expert remember the last four tiles they left and avoid
-  pacing between the same two cells.
-- After a while the fugitive stops dodging and commits to the exit — after 8
-  rounds on Easy, 14 on Normal, 20 on Hard and 30 on Expert.
-- The Expert tier treats every tile next to any hunter as almost forbidden
-  while it still has room to dodge.
+The leaf score rewards the fugitive side for being close to an exit, far from
+the nearest hunter, having open moves and keeping more fugitives alive; the
+hunter side gets the negation. Each node keeps only the ten best-ordered moves,
+and a node cap keeps a decision responsive even at 5 vs 5.
 
-When you play as the fugitives, the AI controls the hunters instead:
+Difficulty is the search depth:
 
-| Hunter AI | Behaviour |
-| --- | --- |
-| **Easy** | Picks a random legal move. |
-| **Normal** | Chases the nearest fugitive with A*. |
-| **Hard / Expert** | Tries to reach a point on the fugitive's exit route before the fugitive gets there, and chases hard otherwise. |
+| Tier | Depth | Behaviour |
+| --- | --- | --- |
+| **Easy** | 1 ply | greedy, with 25% random moves |
+| **Normal** | 2 plies | sees the immediate answer |
+| **Hard** | 3 plies | sees several moves ahead |
+| **Expert** | 4 plies | plans further ahead with more pruning |
+
+The search controls the AI fugitives when you play as the hunters, and the AI
+hunters when you play as the fugitives. The Godot port keeps its earlier
+heuristic AI (BFS/A* plus a short lookahead) rather than the search.
 
 ## Map generation
 
@@ -218,9 +222,10 @@ node tests/web_smoke_test.js
 
 The browser suite checks layout parsing, A* and BFS behaviour, 225 generated
 maps across wall densities (including 0%), exit counts with their open 3×3
-doorsteps, side selection and hunter rotation, both AI controllers, the
-capture/escape rules, and 70 scripted battles from both sides (most resolve;
-hunts can legitimately run long now that there is no fatigue rule).
+doorsteps, side selection and free unit choice, both adversarial AI
+controllers, the capture/escape rules, and 60 scripted battles from both sides
+(most resolve; hunts can legitimately run long now that there is no fatigue
+rule).
 
 Godot build:
 
